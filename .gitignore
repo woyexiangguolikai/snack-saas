@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+unpackage/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.turbo/
+apps/server/generated/
+apps/server/prisma/migrations/
+
+# Token 生成物：由 packages/tokens/src/tokens.css 派生，不入库（避免出现第二个真相源）
+apps/mini/src/styles/tokens.generated.css

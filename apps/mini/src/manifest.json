@@ -1,0 +1,35 @@
+{
+  "name": "校园零食",
+  "appid": "wxa36284295094324e",
+  "description": "校园零食多租户 SaaS：学生端 + 商户端同包（AppID 换租户）",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "vueVersion": "3",
+  "mp-weixin": {
+    "appid": "wxa36284295094324e",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "minified": true,
+      "postcss": true
+    },
+    "usingComponents": true,
+    "lazyCodeLoading": "requiredComponents",
+    "optimization": {
+      "subPackages": true
+    },
+    "permission": {},
+    "requiredPrivateInfos": []
+  },
+  "h5": {
+    "title": "校园零食",
+    "router": {
+      "base": "/",
+      "mode": "hash"
+    },
+    "devServer": {
+      "port": 5180
+    }
+  }
+}

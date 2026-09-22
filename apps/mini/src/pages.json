@@ -1,0 +1,175 @@
+{
+  "pages": [
+    {
+      "path": "pages/shop/home",
+      "style": {
+        "navigationBarTitleText": "点单",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/shop/category",
+      "style": {
+        "navigationBarTitleText": "分类",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/shop/search",
+      "style": {
+        "navigationBarTitleText": "搜索"
+      }
+    },
+    {
+      "path": "pages/order/confirm",
+      "style": {
+        "navigationBarTitleText": "确认订单"
+      }
+    },
+    {
+      "path": "pages/order/list",
+      "style": {
+        "navigationBarTitleText": "我的订单",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/order/detail",
+      "style": {
+        "navigationBarTitleText": "订单详情",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/order/pay-result",
+      "style": {
+        "navigationBarTitleText": "支付"
+      }
+    },
+    {
+      "path": "pages/address/list",
+      "style": {
+        "navigationBarTitleText": "地址簿"
+      }
+    },
+    {
+      "path": "pages/address/edit",
+      "style": {
+        "navigationBarTitleText": "收货地址"
+      }
+    },
+    {
+      "path": "pages/mine/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/mine/notice",
+      "style": {
+        "navigationBarTitleText": "消息",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/mine/about",
+      "style": {
+        "navigationBarTitleText": "关于本店与隐私"
+      }
+    },
+    {
+      "path": "pages/common/closed",
+      "style": {
+        "navigationBarTitleText": "店铺未开通"
+      }
+    },
+    {
+      "path": "pages/common/status",
+      "style": {
+        "navigationBarTitleText": "下单状态"
+      }
+    },
+    {
+      "path": "pages/playground/index",
+      "style": {
+        "navigationBarTitleText": "组件 Playground"
+      }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "pages-merchant",
+      "name": "merchant",
+      "pages": [
+        {
+          "path": "delivery/index",
+          "style": { "navigationBarTitleText": "配送清单", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "order/detail",
+          "style": { "navigationBarTitleText": "订单详情", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "order/refund",
+          "style": { "navigationBarTitleText": "退款处理" }
+        },
+        {
+          "path": "stock/quick",
+          "style": { "navigationBarTitleText": "库存快改", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "goods/list",
+          "style": { "navigationBarTitleText": "商品", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "building/list",
+          "style": { "navigationBarTitleText": "楼栋与配送", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "mine/index",
+          "style": { "navigationBarTitleText": "我的店铺" }
+        },
+        {
+          "path": "mine/balance",
+          "style": { "navigationBarTitleText": "服务费余额", "enablePullDownRefresh": true }
+        },
+        {
+          "path": "mine/subscription",
+          "style": { "navigationBarTitleText": "服务期" }
+        },
+        {
+          "path": "setting/index",
+          "style": { "navigationBarTitleText": "店铺设置" }
+        }
+      ]
+    }
+  ],
+  "tabBar": {
+    "color": "#78716C",
+    "selectedColor": "#F26B21",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/shop/home",
+        "text": "点单"
+      },
+      {
+        "pagePath": "pages/order/list",
+        "text": "订单"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "校园零食",
+    "navigationBarBackgroundColor": "#FBF9F5",
+    "backgroundColor": "#FBF9F5",
+    "backgroundTextStyle": "dark"
+  }
+}

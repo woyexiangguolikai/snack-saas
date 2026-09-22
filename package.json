@@ -1,0 +1,29 @@
+{
+  "name": "snack-saas",
+  "private": true,
+  "version": "0.1.0",
+  "description": "校园零食多租户 SaaS —— 4 端（学生端小程序 / 商户端小程序 / 商户网页 / 平台后台）+ 上线流水线 + SKU×楼栋库存矩阵",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @snack/tokens && npm run build -w @snack/server && npm run build -w @snack/mini",
+    "build:server": "npm run build -w @snack/tokens && npm run build -w @snack/server",
+    "build:mini": "npm run tokens:sync -w @snack/mini && npm run build:mp -w @snack/mini && npm run build:h5 -w @snack/mini",
+    "typecheck": "npm run typecheck -w @snack/tokens && npm run typecheck -w @snack/server && npm run typecheck -w @snack/mini",
+    "check:copy": "node scripts/check-copy.mjs",
+    "verify:server": "npm run check:copy && npm run build:server && npm run smoke",
+    "verify:mini": "npm run verify -w @snack/mini",
+    "verify": "npm run verify:server && npm run verify:mini",
+    "smoke": "npm run build -w @snack/tokens && npm run smoke -w @snack/server",
+    "seed:dev": "node scripts/seed-dev.mjs",
+    "dev:server": "npm run dev -w @snack/server",
+    "start:server": "npm run start -w @snack/server",
+    "dev:mp": "npm run tokens:sync -w @snack/mini && npm run dev:mp -w @snack/mini",
+    "dev:h5": "npm run tokens:sync -w @snack/mini && npm run dev:h5 -w @snack/mini"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

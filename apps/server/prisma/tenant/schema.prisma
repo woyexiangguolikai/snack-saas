@@ -1,0 +1,326 @@
+// ============================================================================
+// 租户库（每商户一套，N 个）—— 楼栋 / 商品 / 库存矩阵 / 订单 / 用户 / 地址
+// ----------------------------------------------------------------------------
+// 这是**唯一**允许存在房间号与楼层的库（D16 / AC-13）。
+// 建库方式：平台后台「创建租户向导」→ 自动建库 → 对本 schema 执行 migrate deploy。
+// 迁移参数：prisma migrate deploy --schema prisma/tenant/schema.prisma
+//          （DATABASE_URL 指向该租户的库）
+// 铁律：金额一律用整数「分」；时间存 UTC；有历史引用的数据一律软删除。
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/tenant-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("TENANT_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- 楼栋（= 商户的门店）
+
+model Building {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique @db.VarChar(32) // 平台库 order_summary.building_code 引用它
+  name             String   @db.VarChar(64)
+  sort             Int      @default(0)
+  // active 启用 / disabled 停用（**只能停用不能删除**，否则历史订单与流水全部对不上）
+  status           String   @default("active") @db.VarChar(16)
+  isDefault        Boolean  @default(false) @map("is_default") // 建租户时自动创建，供单楼栋降级用
+  deliveryEnabled  Boolean  @default(true) @map("delivery_enabled") // 楼栋级「今日暂停配送」
+  // 楼栋级配置：空 = 继承店铺配置（D9）
+  minAmountCents   Int?     @map("min_amount_cents")
+  deliveryFeeCents Int?     @map("delivery_fee_cents")
+  // 可进入时间窗（门禁）—— 营业时间的硬上限（D14）。存 "HH:mm"
+  accessibleFrom   String?  @map("accessible_from") @db.VarChar(5)
+  accessibleTo     String?  @map("accessible_to") @db.VarChar(5)
+  notice           String?  @db.VarChar(255) // 本栋提示语，如「1 栋只送到 22:00」
+  // ⚠️ 楼栋级差异一律进这里，缺省即继承店铺 —— 将来加配置项**不用改表**（铁律 5）
+  configOverride   Json?    @map("config_override")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  stocks       ProductStock[]
+  stockLogs    StockLog[]
+  carts        Cart[]
+  orders       Order[]
+  addresses    Address[]
+  transferFrom StockTransfer[] @relation("fromBuilding")
+  transferTo   StockTransfer[] @relation("toBuilding")
+
+  @@index([status, sort])
+  @@map("buildings")
+}
+
+// ---------------------------------------------------------------- 商品（价格全局统一，不按楼栋）
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(32)
+  sort      Int      @default(0)
+  status    String   @default("active") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(64)
+  cover      String?  @db.VarChar(255)
+  spec       String?  @db.VarChar(64) // 规格，如「原味 104g」
+  // ⚠️ 价格全局统一，不按楼栋（D11 / §4.12）
+  priceCents Int      @map("price_cents")
+  categoryId Int?     @map("category_id")
+  status     String   @default("active") @db.VarChar(16) // active / off 全局下架
+  sort       Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  category Category?      @relation(fields: [categoryId], references: [id])
+  stocks   ProductStock[]
+  stockLogs StockLog[]
+  items    OrderItem[]
+  cartItems CartItem[]
+
+  @@index([categoryId, sort])
+  @@map("products")
+}
+
+// SKU × 楼栋 的二维库存矩阵。库存按楼栋独立**不是功能设计，是物理事实的映射**（§4.4）
+model ProductStock {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  buildingId Int      @map("building_id")
+  stock      Int      @default(0) // 可售
+  locked     Int      @default(0) // 已下单未支付，预占
+  sold       Int      @default(0) // 已支付累计
+  // on 上架 / off 该楼栋单独下架 —— on/off 与 stock=0 是**两件事**：
+  //   off/无记录 = 未在该楼栋上架 → 前台不显示（不是"售罄"）
+  //   on 且 stock=0 → 显示售罄，不可加购
+  status     String   @default("on") @db.VarChar(8)
+  warnStock  Int?     @map("warn_stock") // 低库存提醒线
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@unique([productId, buildingId])
+  @@index([buildingId, status])
+  @@map("product_stocks")
+}
+
+model StockLog {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  buildingId Int      @map("building_id")
+  // order_hold 下单预占 / pay_confirm 支付确认 / cancel_release 取消释放 /
+  // refund_return 退款回库 / manual_adjust 人工调整 / transfer_out 调拨出 / transfer_in 调拨入
+  type       String   @db.VarChar(24)
+  change     Int      // 有符号：预占记负数
+  stockAfter Int      @map("stock_after")
+  refOrderNo String?  @map("ref_order_no") @db.VarChar(48)
+  operator   String?  @db.VarChar(32)
+  remark     String?  @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@index([productId, buildingId, createdAt])
+  @@index([refOrderNo])
+  @@map("stock_logs")
+}
+
+// 跨栋调拨 —— 是例外不是常态（§4.4）
+model StockTransfer {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @map("product_id")
+  fromBuildingId Int      @map("from_building_id")
+  toBuildingId   Int      @map("to_building_id")
+  qty            Int
+  operator       String?  @db.VarChar(32)
+  remark         String?  @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  fromBuilding Building @relation("fromBuilding", fields: [fromBuildingId], references: [id])
+  toBuilding   Building @relation("toBuilding", fields: [toBuildingId], references: [id])
+
+  @@index([productId, createdAt])
+  @@map("stock_transfers")
+}
+
+// ---------------------------------------------------------------- 购物车（**一个购物车只能属于一栋楼**）
+
+model Cart {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  buildingId Int      @map("building_id") // 切换楼栋时整cart重建（D8：自动清空 + 轻提示）
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  building Building   @relation(fields: [buildingId], references: [id])
+  items    CartItem[]
+
+  @@unique([userId, buildingId])
+  @@map("carts")
+}
+
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  cartId    Int      @map("cart_id")
+  productId Int      @map("product_id")
+  qty       Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+// ---------------------------------------------------------------- 用户与地址
+
+model User {
+  id             Int      @id @default(autoincrement())
+  openid         String   @unique @db.VarChar(64)
+  unionid        String?  @db.VarChar(64)
+  nickname       String?  @db.VarChar(64)
+  avatar         String?  @db.VarChar(255)
+  phone          String?  @db.VarChar(32) // v1 不强制手机号（细节 27）
+  lastBuildingId Int?     @map("last_building_id") // 上次选择的楼栋，本地 + 服务端双记忆
+  role           String   @default("student") @db.VarChar(16) // student / owner 店主（v1 单管理员 D10）
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  orders    Order[]
+  addresses Address[]
+
+  @@map("users")
+}
+
+// 地址精度：楼栋 + 楼层（可选，用于配送动线排序）+ 房间号（§4.13.1）
+// ⚠️ 地址簿的「楼栋」**不决定订单楼栋**，只用于校验（CS-10 跨楼栋拦截）
+model Address {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  buildingId Int      @map("building_id")
+  floor      String?  @db.VarChar(16) // 可填可不填，不填则按房间号排序
+  room       String   @db.VarChar(32) // 302 / 3-302 / A302 格式不做强校验（各校格式不一）
+  contact    String?  @db.VarChar(32)
+  phone      String?  @db.VarChar(32)
+  tag        String?  @db.VarChar(32) // 「我自己」「帮李同学带」
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ---------------------------------------------------------------- 订单
+
+model Order {
+  id           Int      @id @default(autoincrement())
+  orderNo      String   @unique @db.VarChar(48) // 含 tenant_code 前缀，排查时一眼定位租户
+  userId       Int      @map("user_id")
+  buildingId   Int      @map("building_id") // 订单与购物车都绑楼栋 → **一个订单不可能跨楼栋**
+  floor        String?  @db.VarChar(16)
+  room         String   @db.VarChar(32) // ⚠️ 房间号只存在于租户库（铁律 6）
+  amountCents  Int      @map("amount_cents")      // 商品小计
+  deliveryFeeCents Int  @default(0) @map("delivery_fee_cents")
+  totalCents   Int      @map("total_cents")
+  feeCents     Int      @default(0) @map("fee_cents") // 2% 交易服务费（我方收入，平台库也有汇总）
+  remark       String?  @db.VarChar(255)
+  // pending_pay / pending_accept / delivering / delivered / completed / cancelled / refunding / refunded
+  // 送达即终态（D15：商户标记"已送达"即完成，不做学生确认收货）
+  status       String   @default("pending_pay") @db.VarChar(24)
+  payStatus    String   @default("unpaid") @map("pay_status") @db.VarChar(16) // unpaid / paid / refunded
+  payTxnId     String?  @map("pay_txn_id") @db.VarChar(64)
+  paidAt       DateTime? @map("paid_at")
+  acceptedAt   DateTime? @map("accepted_at")
+  deliveredAt  DateTime? @map("delivered_at")
+  completedAt  DateTime? @map("completed_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelReason String?  @map("cancel_reason") @db.VarChar(128)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user     User        @relation(fields: [userId], references: [id])
+  building Building    @relation(fields: [buildingId], references: [id])
+  items    OrderItem[]
+  afterSales AfterSale[]
+
+  @@index([status, createdAt])
+  // 配送清单的排序依据：楼栋 → 楼层 → 房间号（**空间序，不是时间序**，AC-03）
+  @@index([buildingId, status, floor, room])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         Int    @id @default(autoincrement())
+  orderId    Int    @map("order_id")
+  productId  Int    @map("product_id")
+  nameSnap   String @map("name_snap") @db.VarChar(64) // 下单时的商品名快照
+  priceSnap  Int    @map("price_snap")                 // 下单时的单价快照（分）
+  qty        Int
+  amountCents Int   @map("amount_cents")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model AfterSale {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      @map("order_id")
+  type        String   @db.VarChar(16) // full 全退 / partial 部分退
+  amountCents Int      @map("amount_cents")
+  reason      String?  @db.VarChar(255)
+  // pending / approved / rejected
+  status      String   @default("pending") @db.VarChar(16)
+  feeReturnCents Int   @default(0) @map("fee_return_cents") // 退款成功则返还对应服务费
+  stockReturned  Boolean @default(false) @map("stock_returned") // 未送达回库；已送达不回库，由商户决定
+  rejectReason String? @map("reject_reason") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+  handledAt   DateTime? @map("handled_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("after_sales")
+}
+
+// ---------------------------------------------------------------- 店铺配置
+
+// 放租户库，便于**整库导出交付**（商户能拿到自己的数据）
+model ShopConfig {
+  id                Int      @id @default(autoincrement())
+  shopName          String   @map("shop_name") @db.VarChar(64)
+  logoUrl           String?  @map("logo_url") @db.VarChar(255)
+  announcement      String?  @db.VarChar(255)
+  themeColor        String?  @map("theme_color") @db.VarChar(16)   // 商户提交色（原值，留档）
+  themeScale        Json?    @map("theme_scale")                   // 经护栏修正后的九级色阶
+  themeNotice       String?  @map("theme_notice") @db.VarChar(255) // 「这个颜色偏浅…」的人话提示
+  minAmountCents    Int      @default(0) @map("min_amount_cents")  // 店铺级起送价（楼栋空则继承）
+  deliveryFeeCents  Int      @default(0) @map("delivery_fee_cents")
+  openTime          String?  @map("open_time") @db.VarChar(5)      // "HH:mm" 租户级营业时间
+  closeTime         String?  @map("close_time") @db.VarChar(5)
+  // 店铺级可进入时间窗默认值（租户级默认，楼栋级可覆盖，D14）
+  accessibleFrom    String?  @map("accessible_from") @db.VarChar(5)
+  accessibleTo      String?  @map("accessible_to") @db.VarChar(5)
+  cutoffLeadMinutes Int      @default(30) @map("cutoff_lead_minutes") // 预留配送在途时间 → 截单早于门禁结束
+  contactPhone      String?  @map("contact_phone") @db.VarChar(32)
+  // 店铺自有开关：关店时盘中订单不受影响
+  shopOpen          Boolean  @default(true) @map("shop_open")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("shop_config")
+}

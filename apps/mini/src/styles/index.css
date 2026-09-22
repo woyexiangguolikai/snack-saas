@@ -1,0 +1,4 @@
+/* 全局样式入口 —— App.vue 只 import 这一个文件 */
+@import './tokens.generated.css';
+@import './base.css';
+@import './anim.css';

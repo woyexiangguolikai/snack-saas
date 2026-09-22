@@ -1,0 +1,85 @@
+/* ============================================================================
+ * 全局基础样式 —— 只做四件事，不承载任何组件样式
+ *   ① 重置与字号默认  ② 滚动容器防塌陷  ③ 安全区  ④ 深色/桌面适配钩子
+ * 所有色值/字号/间距一律引用 tokens.generated.css 的变量（AC-04）。
+ * ==========================================================================*/
+
+page,
+:root {
+  background: var(--paper);
+  color: var(--ink-900);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+view,
+text,
+image,
+scroll-view,
+input,
+textarea,
+button,
+label {
+  box-sizing: border-box;
+}
+
+image {
+  display: block;
+}
+
+/* 微信小程序里 button 有原生默认样式，本项目不使用原生 button，统一用 view + 无障碍属性 */
+
+/* ---- 关键坑：纵向 flex 滚动容器塌陷 ----------------------------------------
+ * <scroll-view> 或 flex:column 容器里的直接子元素默认 flex-shrink:1，
+ * 内容一多就会被压扁成一条线（骨架屏最先暴露这个问题）。
+ * 这里一次性归零，避免每个页面各写一遍。 */
+.sn-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.sn-scroll > view,
+.sn-scroll > scroll-view,
+.sn-scroll > image,
+.sn-scroll > text {
+  flex-shrink: 0;
+}
+
+/* ---- 安全区 ----------------------------------------------------------------
+ * 这里**故意只有 bottom，没有 top** —— 顶部没有可以用 CSS 表达的安全区：
+ *   · `env(safe-area-inset-top)` 在微信小程序 webview 里恒为 0（它只覆盖 iOS 底部 home 条）；
+ *   · 即便不为 0，页面样式表在 app.wxss 之后加载，同优先级的 padding 简写也会把它覆盖掉。
+ * 顶部安全区一律走 `composables/useNavMetrics.ts`（实测状态栏高度 + 胶囊位置），
+ * 并且**必须写成行内样式**。谁再往这里加 `.sn-safe-top`，谁就把这个坑重新挖一遍。
+ * ------------------------------------------------------------------------- */
+.sn-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: constant(safe-area-inset-bottom);
+}
+
+/* ---- 页面级容器 ------------------------------------------------------------ */
+.sn-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--paper);
+}
+
+.sn-body {
+  padding: 0 var(--page-x);
+}
+
+/* 金额 / 库存 / 房号 / 单号统一等宽（AC-07）——.num 类在 tokens.generated.css 中定义 */
+
+/* 屏幕阅读器专用文本（图标按钮的 aria 兜底） */
+.sn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

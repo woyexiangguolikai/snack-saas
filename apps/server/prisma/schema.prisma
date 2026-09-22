@@ -1,0 +1,295 @@
+// ============================================================================
+// 平台库（1 个）—— 租户元数据 / 双账本 / 订单汇总 / 流水线 / 版本 / 密钥 / 监控
+// ----------------------------------------------------------------------------
+// 铁律：**只存钱，不存人**。
+//   ⚠️ 房间号绝对不能进本库、不能进平台侧任何报表、不能落日志（§4.13.4 / D16 / AC-13）
+//   本文件中【不存在】room / floor 字段。这不是遗漏，是硬要求。
+// 铁律：金额一律用整数「分」（Int），不用 Float / Decimal 参与计算。
+// 铁律：所有时间存 UTC（DateTime），展示层转本地时区。
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/platform-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("PLATFORM_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- 租户与字典
+
+model Tenant {
+  id           Int      @id @default(autoincrement())
+  tenantCode   String   @unique @map("tenant_code") @db.VarChar(32)
+  appid        String?  @unique @db.VarChar(64)
+  mchId        String?  @map("mch_id") @db.VarChar(64)
+  orgName      String   @map("org_name") @db.VarChar(128) // 机构名（执照主体）
+  shopName     String   @map("shop_name") @db.VarChar(64) // 店铺名
+  schoolId     Int?     @map("school_id")
+  contactName  String?  @map("contact_name") @db.VarChar(32)
+  contactPhone String?  @map("contact_phone") @db.VarChar(32)
+  logoUrl      String?  @map("logo_url") @db.VarChar(255)
+  region       String?  @db.VarChar(32) // 广西为主
+  // 租户状态机：draft 建档 / pipeline 上线流水线中 / active 营业 / suspended 我方强制停用 / expired 订阅到期
+  status       String   @default("draft") @db.VarChar(16)
+  // 数据库信息（每租户独立库，D3）
+  dbName       String   @unique @map("db_name") @db.VarChar(64)
+  dbHost       String?  @map("db_host") @db.VarChar(128)
+  activatedAt  DateTime? @map("activated_at")
+  suspendedAt  DateTime? @map("suspended_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  subscription  Subscription?
+  wallet        WalletAccount?
+  stages        PipelineStage[]
+  releases      CodeRelease[]
+  secrets       TenantSecret[]
+  statements    Statement[]
+  orderSummary  OrderSummary[]
+  walletTxns    WalletTxn[]
+
+  @@index([status])
+  @@index([schoolId])
+  @@map("tenants")
+}
+
+model School {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(64)
+  region    String   @db.VarChar(32)
+  city      String?  @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  templates BuildingTemplate[]
+
+  @@unique([name, region])
+  @@map("schools")
+}
+
+// 学校字典的**唯一**作用：建租户时的楼栋模板来源（§4.1）
+model BuildingTemplate {
+  id       Int    @id @default(autoincrement())
+  schoolId Int    @map("school_id")
+  name     String @db.VarChar(64)
+  sort     Int    @default(0)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, name])
+  @@map("building_templates")
+}
+
+// ---------------------------------------------------------------- 上线流水线
+
+// 12 阶段状态机（§5）。三大非代码瓶颈都靠这张表暴露：
+// 卡在哪一步、卡了几天、驳回原因。
+model PipelineStage {
+  id           Int       @id @default(autoincrement())
+  tenantCode   String    @map("tenant_code") @db.VarChar(32)
+  stageNo      Int       @map("stage_no")
+  stageName    String    @map("stage_name") @db.VarChar(64)
+  // pending / doing / done / rejected  ← 驳回用琥珀不用红，是正常流程不是异常
+  status       String    @default("pending") @db.VarChar(16)
+  owner        String    @db.VarChar(32) // renter 商户 / partner 合伙人 / system 系统 / platform 我方
+  startAt      DateTime? @map("start_at")
+  doneAt       DateTime? @map("done_at")
+  rejectReason String?   @map("reject_reason") @db.Text
+  contactedAt  DateTime? @map("contacted_at") // 上次触达（催办依据）
+  remark       String?   @db.Text
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@unique([tenantCode, stageNo])
+  @@index([status])
+  @@map("pipeline_stages")
+}
+
+// ---------------------------------------------------------------- 账本一：订阅（服务期）
+
+model Subscription {
+  id           Int       @id @default(autoincrement())
+  tenantCode   String    @unique @map("tenant_code") @db.VarChar(32)
+  periodStart  DateTime? @map("period_start")
+  periodEnd    DateTime? @map("period_end")
+  // active / expiring / expired
+  status       String    @default("active") @db.VarChar(16)
+  feeCents     Int       @default(30000) @map("fee_cents") // 300 元/学期，独立计价，不并入余额
+  lastRenewAt  DateTime? @map("last_renew_at")
+  notifyFlags  String?   @map("notify_flags") @db.VarChar(32) // 已发过的提醒位：15/7/3
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@index([status, periodEnd])
+  @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------- 账本二：余额（2% 交易服务费）
+
+model WalletAccount {
+  id          Int      @id @default(autoincrement())
+  tenantCode  String   @unique @map("tenant_code") @db.VarChar(32)
+  balanceCents Int     @default(0) @map("balance_cents")
+  creditLimit Int      @default(-2000) @map("credit_limit") // 应急额度：允许透支 20 元
+  warnLine    Int      @default(5000) @map("warn_line")     // 预警线：50 元
+  minTopup    Int      @default(10000) @map("min_topup")    // 最低充值：100 元
+  // active / warned / blocked
+  status      String   @default("active") @db.VarChar(16)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@index([status])
+  @@map("wallet_accounts")
+}
+
+model WalletTxn {
+  id             Int      @id @default(autoincrement())
+  tenantCode     String   @map("tenant_code") @db.VarChar(32)
+  // topup 充值 / fee 服务费扣减 / adjust 人工调整 / refund 返还
+  type           String   @db.VarChar(16)
+  amountCents    Int      @map("amount_cents") // 有符号：充值为正、扣费为负
+  balanceAfterCents Int   @map("balance_after_cents")
+  refOrderNo     String?  @map("ref_order_no") @db.VarChar(48) // 每笔扣费必须能回链到具体订单
+  runId          Int?     @map("run_id")
+  operator       String?  @db.VarChar(32)
+  remark         String?  @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant          @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+  settlement SettlementRun?  @relation(fields: [runId], references: [id])
+
+  @@index([tenantCode, createdAt])
+  @@index([refOrderNo])
+  @@map("wallet_txns")
+}
+
+// 每日定时任务：汇总「支付成功待扣记录」→ 扣减 → 生成 wallet_txns
+model SettlementRun {
+  id          Int      @id @default(autoincrement())
+  runDate     DateTime @map("run_date") @db.Date
+  tenantCode  String   @map("tenant_code") @db.VarChar(32)
+  orderCount  Int      @default(0) @map("order_count")
+  gmvCents    Int      @default(0) @map("gmv_cents")
+  feeCents    Int      @default(0) @map("fee_cents")
+  status      String   @default("pending") @db.VarChar(16) // pending / done / failed
+  failReason  String?  @map("fail_reason") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  txns WalletTxn[]
+
+  @@unique([runDate, tenantCode])
+  @@map("settlement_runs")
+}
+
+// 平台库的订单汇总：**只存钱，不存人**。绝不含房间号/楼层。
+model OrderSummary {
+  id           Int      @id @default(autoincrement())
+  tenantCode   String   @map("tenant_code") @db.VarChar(32)
+  orderNo      String   @unique @db.VarChar(48)
+  amountCents  Int      @map("amount_cents")
+  feeCents     Int      @map("fee_cents")
+  status       String   @db.VarChar(16)
+  paidAt       DateTime? @map("paid_at")
+  buildingCode String?  @map("building_code") @db.VarChar(32) // 只到楼栋级
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@index([tenantCode, paidAt])
+  @@map("order_summary")
+}
+
+model Statement {
+  id           Int      @id @default(autoincrement())
+  tenantCode   String   @map("tenant_code") @db.VarChar(32)
+  period       String   @db.VarChar(16) // 2026-09 或 2026S1
+  orderCount   Int      @default(0) @map("order_count")
+  gmvCents     Int      @default(0) @map("gmv_cents")
+  feeDueCents  Int      @default(0) @map("fee_due_cents")
+  feeDeductedCents Int  @default(0) @map("fee_deducted_cents")
+  diffCents    Int      @default(0) @map("diff_cents") // ≠0 必须在后台标红
+  status       String   @default("open") @db.VarChar(16) // open / ok / diff
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@unique([tenantCode, period])
+  @@map("statements")
+}
+
+// ---------------------------------------------------------------- 代码版本与发布
+
+model CodeVersion {
+  id        Int      @id @default(autoincrement())
+  version   String   @unique @db.VarChar(32)
+  notes     String?  @db.Text
+  hash      String?  @db.VarChar(64) // 推送冲突判据：代码以我方版本为准
+  status    String   @default("built") @db.VarChar(16) // built / gray / released / deprecated
+  builtAt   DateTime @default(now()) @map("built_at")
+
+  releases CodeRelease[]
+
+  @@map("code_versions")
+}
+
+model CodeRelease {
+  id           Int       @id @default(autoincrement())
+  tenantCode   String    @map("tenant_code") @db.VarChar(32)
+  version      String    @db.VarChar(32)
+  pushedAt     DateTime? @map("pushed_at")
+  submitAt     DateTime? @map("submit_at")   // 商户自行提审（推动权在商户）
+  releasedAt   DateTime? @map("released_at") // 收敛完成的标志
+  // pushing / pushed / submitted / rejected / released / failed
+  status       String    @default("pending") @db.VarChar(16)
+  failReason   String?   @map("fail_reason") @db.VarChar(255) // 密钥失效 / IP 未白名单 / 类目变更
+  isGray       Boolean   @default(false) @map("is_gray")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant      @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+  versionRef CodeVersion @relation(fields: [version], references: [version])
+
+  @@unique([tenantCode, version])
+  @@index([status])
+  @@map("code_releases")
+}
+
+// 密钥：加密存储，平台后台**只可替换不可查看**（接口层面不返回明文）
+model TenantSecret {
+  id         Int      @id @default(autoincrement())
+  tenantCode String   @map("tenant_code") @db.VarChar(32)
+  type       String   @db.VarChar(32) // upload_key 代码上传密钥 / pay_cert 支付证书
+  ciphertext String   @db.Text
+  keyVersion Int      @default(1) @map("key_version")
+  // active / invalid 失效自动告警 / replaced
+  status     String   @default("active") @db.VarChar(16)
+  ipWhitelist String? @map("ip_whitelist") @db.VarChar(255) // 建议只放我方服务器固定出口 IP
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantCode], references: [tenantCode], onDelete: Cascade)
+
+  @@index([tenantCode, type])
+  @@map("tenant_secrets")
+}
+
+// 平台操作审计 —— 不含房间号
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  tenantCode String?  @map("tenant_code") @db.VarChar(32)
+  actor      String   @db.VarChar(64)
+  action     String   @db.VarChar(64)
+  target     String?  @db.VarChar(128)
+  detail     String?  @db.Text
+  ip         String?  @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantCode, createdAt])
+  @@map("audit_logs")
+}

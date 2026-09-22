@@ -1,0 +1,44 @@
+/* 共享动效 —— 只服务「发生了什么」，禁止弹性回弹（设计系统 §1.4）*/
+
+@keyframes sn-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sn-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@keyframes sn-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 旋转圈：13px，用于按钮 loading 态 */
+.sn-spin {
+  width: 13px;
+  height: 13px;
+  border-radius: var(--r-full);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: sn-spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sn-spin {
+    animation-duration: 1400ms;
+  }
+}

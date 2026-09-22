@@ -1,0 +1,105 @@
+# ============================================================================
+# 生产部署（单机起步，50–100 家/月规模足够）
+#   关键约束：**单域名 + 路径前缀**，绝不每租户一个子域名
+#             （微信小程序 request 合法域名有数量上限，细节 25）
+#
+# 启动：docker compose --env-file ../.env up -d
+# 建库：docker compose exec api npm run db:migrate:platform -w @snack/server
+#       每个租户库再跑 npm run db:migrate:tenant -w @snack/server
+# ============================================================================
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00      # 全库存 UTC，展示层转本地时区（铁律 3）
+      - --max-connections=500            # 每租户独立库 → 连接数随租户增长，先给足
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${PLATFORM_DB_NAME:-snack_platform}
+      TZ: UTC
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 租户库单独挂载，便于单库备份与恢复（细节 35：商户误删商品或跑路，你要能救）
+      - ./backups:/backups
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_MODE: mysql
+      PLATFORM_DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/${PLATFORM_DB_NAME:-snack_platform}
+      TENANT_DATABASE_URL_TEMPLATE: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/{db}
+      JWT_SECRET: ${JWT_SECRET:?生产环境必须注入 JWT_SECRET}
+      PLATFORM_ADMIN_KEY: ${PLATFORM_ADMIN_KEY:?生产环境必须注入 PLATFORM_ADMIN_KEY}
+      TZ: UTC
+    expose:
+      - "3000"
+
+  # 定时任务进程：每日服务费扣减 / 超时关单 / 送达自动完成 / 到期提醒 / 对账巡检
+  # 与 api 分开部署，避免长任务占住请求线程
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    command: ["node", "-e", "console.log('worker 将在 D6 接入 BullMQ 定时任务')"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_MODE: mysql
+      PLATFORM_DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/${PLATFORM_DB_NAME:-snack_platform}
+      TENANT_DATABASE_URL_TEMPLATE: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/{db}
+      TZ: UTC
+
+  web:
+    # 商户网页 + 平台后台（uni-app H5 产物，静态托管）
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./web-dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+
+volumes:
+  mysql-data:
+  redis-data:

@@ -1,0 +1,19 @@
+{
+  "name": "@snack/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "设计系统 Token —— 全站唯一真相源（验收项 AC-04）。任何页面/组件不得硬编码色值、字号、圆角。",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src/tokens.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

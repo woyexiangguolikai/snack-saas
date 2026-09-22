@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>代码审查速查卡 · snack-saas</title>
+<style>
+  :root {
+    --brand: #F26B21;
+    --brand-50: #FFF4EC;
+    --brand-100: #FFE4D2;
+    --brand-700: #B8480F;
+    --paper: #FBF9F5;
+    --surface: #FFFFFF;
+    --ink-900: #1C1917;
+    --ink-700: #44403C;
+    --ink-500: #78716C;
+    --ink-400: #A8A29E;
+    --line: #E7E5E4;
+    --ok: #15803D;
+    --ok-bg: #ECFDF3;
+    --warn: #B45309;
+    --warn-bg: #FFFBEB;
+    --danger: #B91C1C;
+    --danger-bg: #FEF2F2;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 48px;
+    background: var(--paper);
+    color: var(--ink-900);
+    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 2px solid var(--ink-900); }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-500); font-size: 12px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--brand-50); color: var(--brand-700); font-size: 11px; font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 18px; }
+  .card.wide { grid-column: 1 / -1; }
+  h2 { margin: 0 0 10px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--ink-900); color: #fff; font-size: 11px; font-family: var(--mono); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; color: var(--ink-500); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td.k { white-space: nowrap; font-weight: 600; }
+
+  ul { margin: 0; padding-left: 18px; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--ink-400); }
+
+  code, .mono { font-family: var(--mono); font-size: 11.5px; }
+  code { background: var(--brand-50); color: var(--brand-700); padding: 1px 5px; border-radius: 4px; }
+  pre { margin: 0; background: #1C1917; color: #F5F5F4; border-radius: var(--r-md); padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; }
+  pre .c { color: #A8A29E; }
+
+  .lv { display: inline-block; min-width: 30px; text-align: center; padding: 1px 6px; border-radius: 5px; font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .lv0 { background: var(--danger-bg); color: var(--danger); }
+  .lv1 { background: var(--brand-50); color: var(--brand-700); }
+  .lv2 { background: #F5F5F4; color: var(--ink-700); }
+  .lv3 { background: var(--warn-bg); color: var(--warn); }
+
+  .q { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+  .q:last-child { border-bottom: none; }
+  .q .num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-family: var(--mono); }
+
+  .blockers { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bl { background: var(--danger-bg); color: var(--danger); border: 1px solid #FECACA; border-radius: 999px; padding: 3px 10px; font-size: 11.5px; }
+
+  .redline { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rl { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; }
+
+  footer { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-500); font-size: 11.5px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  @media print {
+    body { background: #fff; padding: 0; font-size: 11px; }
+    .card { break-inside: avoid; box-shadow: none; }
+    pre { background: #F5F5F4; color: #1C1917; }
+    pre .c { color: #78716C; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>代码审查速查卡</h1>
+      <div class="sub">snack-saas · 配套 <code>docs/CODE_REVIEW.md</code> v1.0 · 建议打印贴在工位</div>
+    </div>
+    <span class="tag">看代码前先过这一页</span>
+  </header>
+
+  <div class="grid">
+
+    <!-- 分级 -->
+    <section class="card wide">
+      <h2><span class="n">1</span>分级：按改动性质，不按行数</h2>
+      <table>
+        <thead><tr><th>级别</th><th>触发条件（满足任一）</th><th>审查要求</th><th>门禁</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="k"><span class="lv lv0">P0</span></td>
+            <td>钱 / 账本 / 退款 · 库存预占扣减 · 租户隔离 · 订单状态机 · 鉴权密钥 · 支付回调幂等 · 隐私字段出参 · 数据迁移</td>
+            <td><strong>双人审查</strong><br />+ 补测试 + 回滚方案</td>
+            <td class="mono">verify</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="lv lv1">P1</span></td>
+            <td>普通接口 / 页面 / 组件 / 状态流转</td>
+            <td>单人审查</td>
+            <td class="mono">verify</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="lv lv2">P2</span></td>
+            <td>纯样式 / 文案 / 常量 / 配置</td>
+            <td>快速审查</td>
+            <td class="mono">verify:mini<br />verify:server</td>
+          </tr>
+          <tr>
+            <td class="k"><span class="lv lv3">P3</span></td>
+            <td>线上止血（先合后审）</td>
+            <td><strong>24h 内补审</strong></td>
+            <td>最小可验证命令</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="sub" style="margin-top:8px">⚠️ <strong>标错级别视同缺陷</strong> —— 把 P0 标成 P1 比代码写错更值得追责，因为它让整个流程失效。</div>
+    </section>
+
+    <!-- 四个问题 -->
+    <section class="card">
+      <h2><span class="n">2</span>看代码前先问四个问题</h2>
+      <div class="q"><div class="num">1</div><div><strong>碰到红线了吗？</strong><br /><span class="sub">碰到 → 双人审 + 要回滚方案。</span></div></div>
+      <div class="q"><div class="num">2</div><div><strong>这个值有几个真相源？</strong><br /><span class="sub">时间 / 颜色 / 金额 / 配置 / 状态 —— 多于一个就是问题。</span></div></div>
+      <div class="q"><div class="num">3</div><div><strong>失败会怎样？</strong><br /><span class="sub">断网 / 超时 / 第三方拒绝 / 重复提交 —— 有没有明确归宿。</span></div></div>
+      <div class="q"><div class="num">4</div><div><strong>这个坑以前踩过吗？</strong><br /><span class="sub">踩过就必须有门禁，不能只靠注释。</span></div></div>
+    </section>
+
+    <!-- 五维 -->
+    <section class="card">
+      <h2><span class="n">3</span>五个维度，逐条过</h2>
+      <ul>
+        <li><strong>D1 正确性</strong>：金额整数分 · 写操作幂等 · 并发失败原样回滚 · 时间只在服务端 · 状态机四处同步 · 失败路径也设计过</li>
+        <li><strong>D2 数据安全</strong>：租户作用域 · 房间号不出商户库 · 日志脱敏 · 密钥不下发客户端 · 新接口默认鉴权</li>
+        <li><strong>D3 唯一真相源</strong>：配置走 <span class="mono">ConfigResolver</span> · 状态色走 Token · 金额走 <span class="mono">amount.ts</span> · 类型照抄服务端 · 判定不进前端 · <strong><span class="mono">VITE_*</span> 会被内联进包，不得放秘密</strong></li>
+        <li><strong>D4 小程序交付</strong>：顶部用 <span class="mono">useNavMetrics()</span> + 行内样式 · 胶囊区不可点 · 组件必须 import · 异步三态齐全 · 骨架同高 · 文案中性 · 无硬编码色值</li>
+        <li><strong>D5 可维护性</strong>：注释讲"为什么" · 无调试残留 · 依赖固定版本 · 一个 PR 一件事 · 新环境变量同步 <span class="mono">.env.example</span></li>
+      </ul>
+    </section>
+
+    <!-- 直接 blocker -->
+    <section class="card wide">
+      <h2><span class="n">4</span>看到这些直接给 blocker</h2>
+      <div class="blockers">
+        <span class="bl">前端自己算"能不能下单"</span>
+        <span class="bl">前端自己写 status → 颜色映射</span>
+        <span class="bl">金额出现浮点</span>
+        <span class="bl">写操作没有幂等键</span>
+        <span class="bl">日志打出地址 / 手机号 / 令牌</span>
+        <span class="bl">页面里出现 #RRGGBB</span>
+        <span class="bl">自定义导航页用 env(safe-area-inset-top)</span>
+        <span class="bl">顶部内边距用 class 写（会被 padding 简写覆盖）</span>
+        <span class="bl">模板用了组件但没 import</span>
+        <span class="bl">.env.local 或密钥出现在 diff 里</span>
+        <span class="bl">把 tsc 换成 esbuild / tsx 跑服务端</span>
+      </div>
+    </section>
+
+    <!-- 红线 -->
+    <section class="card wide">
+      <h2><span class="n">5</span>十条红线（不可协商）</h2>
+      <div class="redline">
+        <span class="rl">R-1 钱不能错：账本变动必有流水，退款必回库</span>
+        <span class="rl">R-2 库存不能为负，预占失败必释放</span>
+        <span class="rl">R-3 房间号不出商户库，日志与平台出参脱敏</span>
+        <span class="rl">R-4 能否下单由服务端判定</span>
+        <span class="rl">R-5 状态颜色只能来自 Token</span>
+        <span class="rl">R-6 样式不得硬编码色值</span>
+        <span class="rl">R-7 楼栋只能停用不能删除（DELETE 一律 403）</span>
+        <span class="rl">R-8 密钥 / .env.local / AppSecret 绝不入库、不下发</span>
+        <span class="rl">R-9 提交色必过 guardThemeColor</span>
+        <span class="rl">R-10 前端不解析后端 message，只按 code 分支</span>
+      </div>
+    </section>
+
+    <!-- 门禁 -->
+    <section class="card wide">
+      <h2><span class="n">6</span>门禁命令（PR 里必须贴完整输出）</h2>
+      <pre><span class="c"># 全量 —— P0 / P1 必跑</span>
+npm run verify
+
+<span class="c"># 分端</span>
+npm run verify:server        <span class="c"># 文案 + 构建 + 冒烟 119/119</span>
+npm run verify:mini          <span class="c"># Token 漂移 + 色值 + 引用完整性 + 类型 + 构建 + 组件注册</span>
+
+<span class="c"># 发布卡口：提审小程序前，产物里不得出现本机地址</span>
+npm run check:build -w @snack/mini -- --release
+
+<span class="c"># 本机铺数据（内存库每次重启清空，重启后重跑）</span>
+npm run dev:server           <span class="c"># 另一个终端</span>
+npm run seed:dev</pre>
+      <div class="sub" style="margin-top:10px">门禁全绿只说明<strong>没有低级错误</strong>，不构成任何质量背书 —— P0 改动仍然必须有人读懂逻辑。</div>
+    </section>
+
+  </div>
+
+  <footer>
+    <span>作者是质量第一责任人，审查者是兜底。"审查者没看出来"不是免责理由。</span>
+    <span class="mono">docs/CODE_REVIEW.md · v1.0 · 2026-09-22</span>
+  </footer>
+
+</div>
+</body>
+</html>
