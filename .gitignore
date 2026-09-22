@@ -12,7 +12,9 @@ apps/server/generated/
 apps/server/prisma/migrations/
 
 # Token 生成物：由 packages/tokens/src/tokens.css 派生，不入库（避免出现第二个真相源）
+# mini 端由本地样式管线产出，web 端由 apps/web/scripts/sync-tokens.mjs 产出，均为派生物
 apps/mini/src/styles/tokens.generated.css
+apps/web/src/styles/tokens.generated.css
 
 # 构建前把旧产物 mv 到这里，而不是 rm（本机沙箱对单次批量删除有阈值拦截，
 # 而 Vite 的 emptyDir 会一次性删掉整个 dist）。纯本地绕行目录，不入库。
