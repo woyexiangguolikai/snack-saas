@@ -1,0 +1,582 @@
+/* ============================================================================
+ * 网页后台全局样式。
+ *
+ * 纪律与小程序端一致（AC-04）：**所有**色值 / 字号 / 圆角 / 间距都来自 Token，
+ * 本文件不定义任何新的色值，只定义"网页端特有的布局骨架"（侧边栏、顶栏、内容区）。
+ * 两端视觉形态不同是允许的，唯一真相源是 Token 表而不是某一端的写法。
+ * ==========================================================================*/
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--ink-900);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 金额 / 库存 / 房号 / 单号 —— 数字必须等宽（AC-07）。
+   与 Token 表里的 .num 同一条规则，这里补上表格单元格的继承场景 */
+.num,
+td.num,
+th.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+a {
+  color: var(--brand-700);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink-900);
+}
+
+/* ----------------------------------------------------------------------------
+ * 按钮 / 表单 / 表格：后台有大量重复的表单与表格，样式在这里定义一次。
+ * 与组件的区别：组件管"行为和组合"，这里管"单个控件长什么样" ——
+ * 拆开是为了让页面里可以只写 class="btn btn--primary" 而不必每个页面重写一遍圆角。
+ * --------------------------------------------------------------------------*/
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border: var(--bd);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-900);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  transition: background var(--d-color) var(--e-std), border-color var(--d-color) var(--e-std);
+}
+.btn:hover:not(:disabled) {
+  background: var(--line-100);
+}
+.btn:disabled {
+  color: var(--ink-400);
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
+  color: var(--on-brand);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.btn--danger {
+  background: var(--surface);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn--danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.btn--sm {
+  height: 30px;
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sub);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--brand-700);
+  padding: 0 var(--sp-2);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--brand-50);
+}
+
+.input,
+.select {
+  height: 36px;
+  width: 100%;
+  padding: 0 var(--sp-3);
+  border: var(--bd);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-900);
+  outline: none;
+  transition: border-color var(--d-color) var(--e-std), box-shadow var(--d-color) var(--e-std);
+}
+.input:focus,
+.select:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.input:disabled,
+.select:disabled {
+  background: var(--line-100);
+  color: var(--ink-400);
+}
+textarea.input {
+  height: auto;
+  min-height: 72px;
+  padding: var(--sp-2) var(--sp-3);
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.field__label {
+  font-size: var(--fs-sub);
+  line-height: var(--lh-sub);
+  font-weight: var(--fw-medium);
+  color: var(--ink-700);
+}
+.field__hint {
+  font-size: var(--fs-tag);
+  line-height: var(--lh-tag);
+  color: var(--ink-500);
+}
+
+/* 表格：后台的核心信息载体。表头用中性底而非阴影分组（一页最多两层容器） */
+.tbl-wrap {
+  overflow: auto;
+}
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-body);
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--line-100);
+  color: var(--ink-700);
+  font-size: var(--fs-sub);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bd);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: var(--sp-3);
+  border-bottom: var(--bd);
+  color: var(--ink-900);
+  vertical-align: middle;
+}
+.tbl tbody tr:hover td {
+  background: var(--line-100);
+}
+.tbl .num {
+  text-align: right;
+}
+
+/* ----------------------------------------------------------------------------
+   横幅（banner）：页顶的一句话状态条。
+
+   以前 .banner 在 Billing / Dashboard / StockMatrix 里各写了一份，三份的
+   padding 一样、flex 不一样 —— 于是"同一句错误提示"在三个页面里的对齐不同。
+   更要紧的是它没法被共享组件用：`ErrorBanner.vue` 里的元素拿不到任何页面的
+   scoped 样式，横幅就会退化成一行没有底色的裸文字。
+   所以这里收成一份，页面里不再定义 .banner*。
+
+   五个色调与 ToneTag 同源：ok / warn / danger / off / info。
+   错误横幅用 danger；"店铺打烊"这类**不是错误的状态**用 off —— 打烊是正常营业状态，
+   用红色会让人以为出事了（§5 状态宪法）。
+   ---------------------------------------------------------------------------- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-body);
+}
+.banner--ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.banner--warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.banner--danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.banner--off {
+  background: var(--off-bg);
+  color: var(--off);
+}
+.banner--info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.row--wrap {
+  flex-wrap: wrap;
+}
+.spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--ink-500);
+}
+.sub {
+  font-size: var(--fs-sub);
+  line-height: var(--lh-sub);
+}
+
+/* 滚动条：浏览器默认的灰白滚动条会割裂页面底色，这里跟着中性色走 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-200);
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-300);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================================
+ * 平台后台（P-01~P-13）—— **四色中性，永不接受租户主题色**（AC-12）
+ * ----------------------------------------------------------------------------
+ * 这一段的 `.p-` 前缀不是命名偏好，是一条纪律的物理隔离：
+ *   · 平台页只用 ink / line / paper / surface / ok / warn / danger / info；
+ *   · **一处 `--brand-*` 都不许出现** —— 否则商户换了主题色，平台后台跟着变色，
+ *     而平台是"我方的工作台"，它不该长得像任何一个商户的店。
+ * 这条规则由 `scripts/check-platform-neutral.mjs` 强制（扫源码，不靠评审）。
+ * ==========================================================================*/
+
+/* 全局的 `a { color: brand }` 是给商户端的；平台侧覆盖成中性色 */
+.p-shell a {
+  color: inherit;
+}
+
+/*
+ * 品牌色变量在平台子树里**就地改写成中性墨色** —— 网页端的 `lockNeutral()`。
+ * （小程序端是 stores/theme.ts 里的 lockNeutral()，两端同一个概念、各自的实现手段：
+ *   小程序要拦的是运行时 applyTenantTheme，网页端要拦的是 CSS 变量继承。）
+ *
+ * 只写「平台页不许用 --brand-*」是不够的：`.input:focus`、`.btn--primary` 这类
+ * **共用类**内部就是引用品牌的（见上面 `.input:focus` 用了 --brand-500）。
+ * 只要有人图省事在平台页写 `<button class="btn btn--primary">`，
+ * 品牌色就从共用类里漏进来了 —— 而这类泄漏靠评审极难发现。
+ *
+ * 所以这里从变量层堵住：子树内 --brand-* 一律解析成墨色，
+ * 共用类照用，颜色也不可能变。ok/warn/danger/info 不动 ——
+ * 那是语义色，本来就零换肤（AC-05）。
+ *
+ * 另有一层源码级护栏：scripts/check-platform-neutral.mjs
+ * （扫 var(--brand-* 与品牌主色的硬编码十六进制 —— 那个值写在这里会被 AC-04 拦下，
+ *   所以它只出现在 `.mjs` 脚本里，`.css` 里一个字母都不留）。
+ * 两层都要有：变量层挡「顺手写错」，源码层挡「有人在别处新造一个品牌色变量」。
+ */
+.p-shell {
+  --brand-50: var(--line-100);
+  --brand-100: var(--line-100);
+  --brand-200: var(--line-200);
+  --brand-300: var(--ink-300);
+  --brand-400: var(--ink-500);
+  --brand-500: var(--ink-900);
+  --brand-600: var(--ink-900);
+  --brand-700: var(--ink-900);
+  --brand-800: var(--ink-900);
+  --brand-ring: var(--line-200);
+}
+
+.p-shell {
+  display: flex;
+  min-height: 100%;
+}
+
+.p-side {
+  width: 208px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: var(--bd);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.p-side__brand {
+  padding: var(--sp-4);
+  border-bottom: var(--bd);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.p-side__mark {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  color: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-tag);
+  font-weight: var(--fw-semibold);
+}
+.p-side__name {
+  display: block;
+  font-size: var(--fs-card);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-900);
+}
+.p-side__sub {
+  display: block;
+  font-size: var(--fs-tag);
+  color: var(--ink-400);
+}
+.p-side__nav {
+  flex: 1;
+  overflow: auto;
+  padding: var(--sp-3) var(--sp-2);
+}
+.p-side__group + .p-side__group {
+  margin-top: var(--sp-4);
+}
+.p-side__gtitle {
+  margin: 0 0 var(--sp-1);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-tag);
+  color: var(--ink-400);
+}
+.p-side__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--ink-700);
+  font-size: var(--fs-body);
+}
+.p-side__link:hover {
+  background: var(--line-100);
+}
+/* 选中态用墨色底而不是品牌色 —— 平台侧唯一的"强调"只能来自中性色阶 */
+.p-side__link--on {
+  background: var(--ink-900);
+  color: var(--surface);
+  font-weight: var(--fw-medium);
+}
+.p-side__link--on .p-side__code {
+  color: var(--line-200);
+}
+.p-side__code {
+  font-size: var(--fs-tag);
+  color: var(--ink-400);
+}
+.p-side__foot {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: var(--bd);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.p-main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-6);
+  max-width: 1560px;
+}
+
+/* 中性主按钮：与 .btn--primary 的区别只有底色来源（ink 而非 brand） */
+.pbtn--primary {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  color: var(--surface);
+}
+.pbtn--primary:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+/* 统计卡：平台看板的"几个数字" */
+.p-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+.p-card {
+  background: var(--surface);
+  border: var(--bd);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+}
+.p-card__k {
+  font-size: var(--fs-sub);
+  color: var(--ink-500);
+}
+.p-card__v {
+  margin-top: var(--sp-1);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  line-height: 1.2;
+  color: var(--ink-900);
+}
+.p-card__d {
+  margin-top: 2px;
+  font-size: var(--fs-tag);
+  color: var(--ink-400);
+}
+
+/* 12 阶段横向步骤条 */
+.p-steps {
+  display: flex;
+  gap: var(--sp-1);
+  overflow-x: auto;
+  padding-bottom: var(--sp-2);
+}
+.p-step {
+  flex: 1 0 78px;
+  border-top: 3px solid var(--line-200);
+  padding-top: var(--sp-2);
+  font-size: var(--fs-tag);
+  color: var(--ink-500);
+}
+.p-step--done {
+  border-top-color: var(--ok);
+  color: var(--ink-700);
+}
+.p-step--doing {
+  border-top-color: var(--info);
+  color: var(--ink-900);
+  font-weight: var(--fw-medium);
+}
+/* 驳回用琥珀不用红 —— 驳回是正常流程（审核会驳回），不是异常（§5 状态宪法） */
+.p-step--rejected {
+  border-top-color: var(--warn);
+  color: var(--ink-900);
+  font-weight: var(--fw-medium);
+}
+.p-step--overdue {
+  border-top-color: var(--danger);
+}
+.p-step__no {
+  display: block;
+  font-family: var(--mono);
+  color: var(--ink-400);
+}
+
+/* 筛选 Chip：选中态用墨色，与侧边栏一致 */
+.p-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border: var(--bd);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-700);
+  font-size: var(--fs-sub);
+}
+.p-chip:hover {
+  background: var(--line-100);
+}
+.p-chip--on {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  color: var(--surface);
+}
+
+/* 隐私护栏卡：常驻 P-01 顶部（AC-13） */
+.p-guard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: var(--bd);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.p-guard__t {
+  font-weight: var(--fw-medium);
+  color: var(--ink-900);
+}
+.p-guard__d {
+  margin-top: 2px;
+  font-size: var(--fs-sub);
+  color: var(--ink-500);
+}
+
+/* 只读的密文格：密钥页用它表达"这里永远看不到明文" */
+.p-mask {
+  font-family: var(--mono);
+  letter-spacing: 1px;
+  color: var(--ink-700);
+}
+
+.p-note {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sub);
+}
+.p-note--warn {
+  background: var(--warn-bg);
+  color: var(--ink-900);
+}
+.p-note--danger {
+  background: var(--danger-bg);
+  color: var(--ink-900);
+}
+.p-note--info {
+  background: var(--info-bg);
+  color: var(--ink-900);
+}
+.p-note--ok {
+  background: var(--ok-bg);
+  color: var(--ink-900);
+}

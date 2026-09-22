@@ -113,34 +113,92 @@ export interface MatrixRow {
   totalStock: number;
 }
 
+/** 楼栋后台行：原始记录 + 解析后的有效配置（含每个字段是"继承店铺"还是"本栋覆盖"） */
 export interface MerchantBuilding {
-  buildingId: number;
-  buildingCode: string;
-  buildingName: string;
-  status: string;
-  deliveryEnabled: boolean;
-  minAmountCents: number;
-  deliveryFeeCents: number;
-  accessibleFrom: string;
-  accessibleTo: string;
-  cutoffTime: string;
-  notice: string | null;
-  todayOrderCount?: number;
+  id: number;
+  code: string;
+  name: string;
+  status: 'active' | 'disabled';
+  sort: number;
+  resolved: {
+    buildingId: number;
+    buildingCode: string;
+    buildingName: string;
+    status: 'active' | 'disabled';
+    isDefault: boolean;
+    /** 今日停送：可逆，库存保留 */
+    deliveryEnabled: boolean;
+    minAmountCents: number;
+    deliveryFeeCents: number;
+    accessibleFrom: string;
+    accessibleTo: string;
+    cutoffTime: string;
+    notice: string | null;
+    source: Record<string, 'building' | 'shop'>;
+  };
 }
 
+/** 账单首页 —— 字段照抄 `LedgerService.billingView`，含服务端算好的 tone 与中性文案 */
 export interface BillingView {
-  wallet: { balanceCents: number; warnLineCents: number; creditLimitCents: number };
-  subscription: { periodStart: string | null; periodEnd: string | null; status: string; daysLeft: number | null };
+  wallet: {
+    balanceCents: number;
+    warnLineCents: number;
+    creditLimitCents: number;
+    /** 余额语义色 —— 由服务端给（AC-11），前端不自己分档 */
+    tone: 'ok' | 'warn' | 'danger';
+    /** 标题/正文与 tone 配套下发：预警说"建议充值"，触底说"充值后立即恢复接单"（§5.4-7） */
+    noticeTitle: string;
+    noticeBody: string;
+    walletName: string;
+  };
+  subscription: {
+    periodStart: string | null;
+    periodEnd: string | null;
+    status: string;
+    daysLeft: number | null;
+    /** 中性标题：正常是「服务期还有 N 天」，到期是「本学期服务期已结束」（§5.4-8） */
+    noticeTitle: string;
+    /** 到期中性文案（禁用词表之外） */
+    notice: string;
+    subscriptionName: string;
+  } | null;
+  /** 待结算（已支付但还没扣服务费的订单）—— 每笔都能回链到订单号 */
+  pending: {
+    items: Array<{ orderNo: string; amountCents: number; feeCents: number; paidAt: string | null; buildingCode: string | null }>;
+    totalFeeCents: number;
+    orderCount: number;
+  };
   txns: Array<{
-    id: number; type: string; amountCents: number; balanceAfter: number;
-    refOrderNo: string | null; remark: string | null; createdAt: string;
+    id: number;
+    type: 'topup' | 'fee' | 'refund' | 'adjust';
+    /** 有符号：充值为正、扣费为负 */
+    amountCents: number;
+    balanceAfterCents: number;
+    refOrderNo: string | null;
+    source: string;
+    remark: string | null;
+    createdAt: string;
+  }>;
+  /** 每日汇总批次 */
+  runs: Array<{
+    id: number;
+    runDate: string;
+    orderCount: number;
+    gmvCents: number;
+    feeCents: number;
+    status: 'pending' | 'done' | 'failed';
   }>;
 }
 
 export const mapi = {
   /* ------------------------------------------------------------ 配送清单 */
 
-  delivery(includeDelivered = false): Promise<{ groups: MerchantDeliveryGroup[]; totalPending: number }> {
+  delivery(includeDelivered = false): Promise<{
+    groups: MerchantDeliveryGroup[];
+    totalPending: number;
+    /** 今日配送日报：与 groups 同源同刻返回，用于"送完了"这个好消息型空态 */
+    today: { day: string; deliveredCount: number; deliveredCents: number };
+  }> {
     return requestMerchant(`/merchant/orders/delivery${includeDelivered ? '?includeDelivered=true' : ''}`);
   },
 
@@ -199,7 +257,7 @@ export const mapi = {
 
   /* --------------------------------------------------------------- 楼栋 */
 
-  buildings(): Promise<{ items: MerchantBuilding[] }> {
+  buildings(): Promise<{ buildings: MerchantBuilding[]; singleBuildingMode: boolean }> {
     return requestMerchant('/buildings');
   },
 
@@ -227,6 +285,8 @@ export const mapi = {
       shopOpen: boolean; openTime: string | null; closeTime: string | null;
       accessibleFrom: string | null; accessibleTo: string | null; cutoffLeadMinutes: number;
       minAmountCents: number; deliveryFeeCents: number;
+      /** 主题色被护栏加深过时的说明 —— 不回显它，商户会以为"我选的色没生效" */
+      themeNotice: string | null;
     };
     singleBuildingMode: boolean;
   }> {
@@ -248,5 +308,18 @@ export const mapi = {
     q.set('limit', String(limit));
     if (type) q.set('type', type);
     return requestMerchant(`/billing/txns?${q.toString()}`);
+  },
+
+  /* --------------------------------------------------- 网页后台登录码 */
+
+  /**
+   * 生成网页后台登录码（6 位 · 5 分钟 · 一次性）。
+   *
+   * 这是网页后台唯一的登录入口，也是**这条链路的最后一环**：
+   * 店主在这里证明"我是店主"（微信身份已验证过），网页端拿码换令牌。
+   * 在账号体系到位之前，它比"网页端另设一个密码"更强 —— 不新增一处可被撞的凭据。
+   */
+  webLoginCode(): Promise<{ code: string; expiresAt: string; ttlSeconds: number }> {
+    return requestMerchant('/merchant/session/web-login-code', { method: 'POST' });
   },
 };

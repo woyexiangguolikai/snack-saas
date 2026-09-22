@@ -11,6 +11,7 @@ import { useCartStore } from '../../stores/cart';
 import { useThemeStore } from '../../stores/theme';
 import { api } from '../../utils/api';
 import { confirm, toast, switchTab, goBackOrHome, TAB } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-16 我的。
@@ -116,9 +117,15 @@ async function doLogout(): Promise<void> {
   toast('已退出登录');
 }
 
+/**
+ * 进商户端（CM-01）。
+ *
+ * 这里**不做身份判断** —— 判断在商户页里做：那一页会用同一个 wx.login 的
+ * 微信身份去换店主令牌，不是店主就得到 403 NOT_MERCHANT 和一句明确的话。
+ * 若在这里先判断一次，就要把"我是不是店主"的答案存两份，而它随时可能在后台被改掉。
+ */
 function gotoMerchant(): void {
-  // 商户端是同一个代码库的另一端（分包），v1 里先用提示占位
-  uni.showToast({ title: '商户入口在学生端分包内，暂未接入', icon: 'none' });
+  uni.navigateTo({ url: '/pages-merchant/delivery/index' });
 }
 
 function onBack(): void {
@@ -129,6 +136,8 @@ function onBack(): void {
 <template>
   <view class="me" :style="theme.themeStyle">
     <SnNavBar title="我的" :show-back="false" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="me__scroll">
       <!-- 用户卡 -->

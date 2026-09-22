@@ -8,13 +8,15 @@ import {
   SUBSCRIPTION_WARN_DAYS,
   feeOfCents,
   type LedgerReconcile,
+  type PlatformReconcileBoard,
   type ReceivableItem,
   type StatementRecord,
   type SubscriptionReminder,
   type SubscriptionRecord,
+  type TenantReconcileRow,
   type WalletRecord,
 } from '../core/types';
-import { CHINA_TZ_OFFSET_MINUTES } from '../core/time-window';
+import { CHINA_TZ_OFFSET_MINUTES, bizDayOf, bizDayStartOf } from '../core/time-window';
 import { COPY } from './copy';
 
 /**
@@ -47,16 +49,18 @@ export class LedgerService {
     return this.repos.platform();
   }
 
-  /** 中国时区的自然日 YYYY-MM-DD（存储层是 UTC，业务日是本地日） */
+  /**
+   * 中国时区的自然日 YYYY-MM-DD（存储层是 UTC，业务日是本地日）。
+   * ⚠️ 实现在 `core/time-window.ts`，这里只保留静态入口给既有调用方 ——
+   * 业务日算错一次，"账期"与"配送日报"就会各说各话，而两边看起来都合理。
+   */
   static bizDate(at: Date, tzOffsetMinutes = CHINA_TZ_OFFSET_MINUTES): string {
-    return new Date(at.getTime() + tzOffsetMinutes * 60_000).toISOString().slice(0, 10);
+    return bizDayOf(at, tzOffsetMinutes);
   }
 
   /** 某个业务日的起点（UTC 时刻）。用于把"当日"变成一条可比较的边界。 */
   static bizDayStart(at: Date, tzOffsetMinutes = CHINA_TZ_OFFSET_MINUTES): Date {
-    const local = new Date(at.getTime() + tzOffsetMinutes * 60_000);
-    const midnightUtc = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
-    return new Date(midnightUtc - tzOffsetMinutes * 60_000);
+    return bizDayStartOf(at, tzOffsetMinutes);
   }
 
   /** 'YYYY-MM-DD' → 该业务日起点 */
@@ -334,20 +338,41 @@ export class LedgerService {
     ]);
     if (!wallet) throw BizError.notFound(ERR.TENANT_NOT_FOUND, `租户不存在：${tenantCode}`);
 
+    // tone 与文案都在服务端定完（AC-11 / D5）：前端只照着渲染，不自己分档、不自己造句。
+    const tone = this.balanceTone(wallet);
+    const daysLeft = sub?.periodEnd
+      ? Math.ceil((new Date(sub.periodEnd).getTime() - Date.now()) / 86_400_000)
+      : null;
+
     return {
       wallet: {
         ...wallet,
         /** tone 直接决定 UI 颜色，业务代码不得自行选色 */
-        tone: this.balanceTone(wallet),
-        warnTitle: COPY.balanceWarnTitle,
-        warnBody: COPY.balanceWarnBody((wallet.balanceCents / 100).toFixed(2), (wallet.warnLineCents / 100).toFixed(0)),
+        tone,
+        /**
+         * 预警与触底用的是**两种语气**，所以标题正文必须跟着 tone 一起下发（§5.4-7）。
+         * 预警 = "建议提前充值"；触底 = "已经停了，充值后立即恢复接单"。
+         * 让前端"看到 danger 就换一句话"会把"什么颜色配什么话"变成两个真相源；
+         * 而用预警的语气说触底的事，商户会以为还能再撑几天，什么也不做。
+         *
+         * ⚠️ ok 态也必须给一句**正常**的话。之前这里无条件下发预警文案，
+         * 于是余额充足时卡片上写着「服务费余额偏低 · 当前余额 ¥500，低于预警线 ¥50」
+         * —— 数字和结论自相矛盾，商户会以为系统坏了。
+         */
+        noticeTitle: this.balanceNoticeTitle(tone),
+        noticeBody: this.balanceNoticeBody(wallet, tone),
         walletName: COPY.walletName,
       },
       subscription: sub
         ? {
             ...sub,
-            daysLeft: sub.periodEnd ? Math.ceil((new Date(sub.periodEnd).getTime() - Date.now()) / 86_400_000) : null,
+            daysLeft,
             subscriptionName: COPY.subscriptionName,
+            /** 到期标题：用中性词"服务期"（§5.4-8），不用"欠费" */
+            noticeTitle:
+              daysLeft === null || daysLeft <= 0
+                ? COPY.subscriptionExpiredTitle
+                : COPY.subscriptionWarnTitle(daysLeft),
             /** 到期文案（中性）：剩余/已结束两种，不含禁用词 */
             notice: this.subscriptionNotice(sub),
           }
@@ -362,6 +387,22 @@ export class LedgerService {
     if (w.balanceCents <= w.creditLimitCents) return 'danger';
     if (w.balanceCents <= w.warnLineCents) return 'warn';
     return 'ok';
+  }
+
+  /** 余额卡的标题 —— 三档三种语气，全部来自 COPY（业务代码不造句） */
+  private balanceNoticeTitle(tone: 'ok' | 'warn' | 'danger'): string {
+    if (tone === 'danger') return COPY.balanceBlockedTitle;
+    if (tone === 'warn') return COPY.balanceWarnTitle;
+    return COPY.balanceOkTitle;
+  }
+
+  /** 余额卡的正文 —— 同上；这里要下标是因为预警文案带具体数字 */
+  private balanceNoticeBody(w: WalletRecord, tone: 'ok' | 'warn' | 'danger'): string {
+    if (tone === 'danger') return COPY.balanceBlockedBody;
+    if (tone === 'warn') {
+      return COPY.balanceWarnBody((w.balanceCents / 100).toFixed(2), (w.warnLineCents / 100).toFixed(0));
+    }
+    return COPY.balanceOkBody((w.warnLineCents / 100).toFixed(0));
   }
 
   subscriptionNotice(sub: SubscriptionRecord): string {
@@ -464,8 +505,109 @@ export class LedgerService {
     });
   }
 
-  /* ============================================================ 六、到期提醒 */
+  /**
+   * 上一个业务月（'YYYY-MM'）。账单是**事后**生成的：9 月 1 号生成 8 月账单。
+   * 为什么不是"当月实时账单"：当月还没结束，差额必然非 0，
+   * 一份天天标红的账单等于没有账单 —— 运营会习惯性忽略红色。
+   */
+  static prevPeriod(at: Date, tzOffsetMinutes = CHINA_TZ_OFFSET_MINUTES): string {
+    const local = new Date(at.getTime() + tzOffsetMinutes * 60_000);
+    const y = local.getUTCFullYear();
+    const m = local.getUTCMonth(); // 0-based
+    const py = m === 0 ? y - 1 : y;
+    const pm = m === 0 ? 12 : m;
+    return `${py}-${String(pm).padStart(2, '0')}`;
+  }
 
+  /**
+   * 月度账单批量生成（定时任务 `statement_build`）。
+   * 幂等：`buildStatement` 内部 upsert，同一个月跑 10 次结果一样。
+   */
+  async buildAllStatements(
+    period: string,
+  ): Promise<{ period: string; items: Array<{ tenantCode: string; status: string; diffCents: number }>; diffCount: number }> {
+    const tenants = await this.platform.listTenants();
+    const items: Array<{ tenantCode: string; status: string; diffCents: number }> = [];
+    for (const t of tenants) {
+      try {
+        const s = await this.buildStatement(t.tenantCode, period);
+        items.push({ tenantCode: t.tenantCode, status: s.status, diffCents: s.diffCents });
+      } catch (e) {
+        // 单个租户失败不中断整批
+        items.push({ tenantCode: t.tenantCode, status: 'error', diffCents: 0 });
+      }
+    }
+    return { period, items, diffCount: items.filter((i) => i.status === 'diff').length };
+  }
+
+  /**
+   * 平台对账看板 —— 把"钱对不对得上"收成**一屏能看完的一行一租户**。
+   *
+   * 两个差额是两件不同的事，故意分成两列：
+   *   · `balanceDiffCents` ≠ 0 → **账本自身坏了**（扣了没记流水），必须查代码
+   *   · `statementDiffCents` ≠ 0 → **账期归属差异**（付了没扣 / 扣了没付），
+   *     多半是"支付发生在月末、扣减发生在次月初"这类跨期问题，可人工调整
+   * 合成一个数字的话，这两种处置完全不同的情况会被当成同一件事。
+   */
+  async platformReconcileBoard(now = new Date()): Promise<PlatformReconcileBoard> {
+    const tenants = await this.platform.listTenants();
+    const rows: TenantReconcileRow[] = [];
+
+    for (const t of tenants) {
+      const code = t.tenantCode;
+      const [wallet, orders, txns, statements, runs, orphans] = await Promise.all([
+        this.platform.getWallet(code),
+        this.platform.listOrderSummaries(code, 100_000),
+        this.platform.listWalletTxns(code, { limit: 100_000 }),
+        this.platform.listStatements(code),
+        this.platform.listSettlementRuns(code, 1),
+        this.platform.listOrphanPays({ tenantCode: code, status: 'open', limit: 1000 }),
+      ]);
+
+      const balanceCents = wallet?.balanceCents ?? 0;
+      const txnSumCents = txns.reduce((s, x) => s + x.amountCents, 0);
+      const balanceDiffCents = balanceCents - txnSumCents;
+
+      const pending = orders.filter((o) => o.status === 'paid');
+      const settled = orders.filter((o) => o.status === 'settled' || o.status === 'refunded');
+
+      // 最近一个已生成的账期（按 period 倒序取第一个）
+      const latest = [...statements].sort((a, b) => b.period.localeCompare(a.period))[0] ?? null;
+
+      rows.push({
+        tenantCode: code,
+        shopName: t.shopName,
+        status: t.status,
+        balanceCents,
+        txnSumCents,
+        balanceDiffCents,
+        pendingOrderCount: pending.length,
+        pendingFeeCents: pending.reduce((s, o) => s + o.feeCents, 0),
+        settledOrderCount: settled.length,
+        settledFeeCents: settled.reduce((s, o) => s + o.feeCents, 0),
+        statementPeriod: latest?.period ?? null,
+        statementFeeDueCents: latest?.feeDueCents ?? 0,
+        statementFeeDeductedCents: latest?.feeDeductedCents ?? 0,
+        statementDiffCents: latest?.diffCents ?? 0,
+        hasDiff: balanceDiffCents !== 0 || (latest?.diffCents ?? 0) !== 0,
+        openOrphanPays: orphans.length,
+        lastSettledDate: runs[0]?.runDate ?? null,
+      });
+    }
+
+    const totals = {
+      tenants: rows.length,
+      withDiff: rows.filter((r) => r.hasDiff).length,
+      balanceDiffCents: rows.reduce((s, r) => s + Math.abs(r.balanceDiffCents), 0),
+      statementDiffCents: rows.reduce((s, r) => s + Math.abs(r.statementDiffCents), 0),
+      openOrphanPays: rows.reduce((s, r) => s + r.openOrphanPays, 0),
+      ok: rows.every((r) => !r.hasDiff && r.openOrphanPays === 0),
+    };
+
+    return { asOf: now.toISOString(), rows, totals };
+  }
+
+  /* ============================================================ 六、到期提醒 */
   /**
    * 到期提醒（15 / 7 / 3 天）。
    * 幂等靠 subscription.notifyFlags 记位：同一个阈值只推一次，

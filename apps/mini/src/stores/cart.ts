@@ -39,6 +39,18 @@ interface Persisted {
   lines: CartLine[];
 }
 
+/**
+ * 整车快照（含它属于哪一栋）。
+ *
+ * R-5 要的"5 秒撤销"必须能**整辆车**还原，而不是把某一行放回去 ——
+ * 换楼栋清空的是全部商品，只还原一件等于没还原，只会让人更困惑。
+ * 所以快照必须连 buildingId 一起存：撤销 = 连同"我在哪一栋"一起回到操作前。
+ */
+export interface CartSnapshot {
+  buildingId: number | null;
+  lines: CartLine[];
+}
+
 const STORAGE_KEY = 'snack.cart';
 /** 单项最大购买量：不是业务规则，是防误触（学生把 10 份按成 100 份） */
 const MAX_QTY_PER_LINE = 99;
@@ -76,14 +88,31 @@ export const useCartStore = defineStore('cart', () => {
   /**
    * 绑定楼栋。**换栋即清空**，并返回被清空的信息供调用方弹轻提示。
    * 返回 null 表示"没有发生清空"（首次绑定 / 同一栋）。
+   *
+   * 返回值里带上 `snapshot`（操作前的整车），因为调用方要在 5 秒内提供撤销（R-5）。
+   * 快照在这里取而不是让调用方自己拼：调用方拿到的是**清空之后**的状态，
+   * 那时候整车已经没了，谁也拼不回来。
    */
-  function bindBuilding(nextId: number): { cleared: number } | null {
+  function bindBuilding(nextId: number): { cleared: number; snapshot: CartSnapshot } | null {
     if (buildingId.value === nextId) return null;
+    const snapshot = snapshotOf();
     const cleared = lines.value.length;
     buildingId.value = nextId;
     lines.value = [];
     persist();
-    return { cleared };
+    return { cleared, snapshot };
+  }
+
+  /** 整车深拷贝 —— 行是对象，浅拷贝会让"清空"把快照里的行也一起清掉 */
+  function snapshotOf(): CartSnapshot {
+    return { buildingId: buildingId.value, lines: lines.value.map((l) => ({ ...l })) };
+  }
+
+  /** 撤销一次换楼栋：连"我在哪一栋"一起还原（只还商品不还楼栋，商品全是错的库存） */
+  function restoreSnapshot(snap: CartSnapshot): void {
+    buildingId.value = snap.buildingId;
+    lines.value = snap.lines.map((l) => ({ ...l }));
+    persist();
   }
 
   function add(item: {
@@ -229,6 +258,7 @@ export const useCartStore = defineStore('cart', () => {
   return {
     buildingId, lines, count, totalCents, isEmpty, hasInvalid, invalidNames,
     bindBuilding, add, addFromHistory, setQty, remove, clear, restoreLine, qtyOf, syncLimits, toOrderItems,
+    snapshotOf, restoreSnapshot,
     MAX_QTY_PER_LINE,
   };
 });

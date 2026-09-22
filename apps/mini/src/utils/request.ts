@@ -7,7 +7,10 @@
  *   ③ 把服务端的错误规整成统一的 `{ code, message }` ——
  *      后端所有错误都带 `code`，前端按 code 分支，**不解析 message 文案**
  *      （文案会改，而且中性文案是产品要求的一部分）
+ *
+ * 另外：网络横幅的数据来源就是这里 —— 请求层是"网络到底通不通"的第一现场。
  */
+import { netReporter } from '../composables/useNetStatus';
 
 export interface ApiError {
   code: string;
@@ -93,9 +96,15 @@ async function requestAs<T>(
   const res = await rawRequest(url, opts, accessor);
   const status = res.statusCode ?? 0;
 
-  if (status >= 200 && status < 300) return res.data as T;
+  if (status >= 200 && status < 300) {
+    // 网络横幅的唯一数据来源就是"真实请求的成败"。
+    // 不编造次数：横幅上写"正在重试（第 2 次）"，那个 2 必须真的失败过两次。
+    netReporter.success();
+    return res.data as T;
+  }
 
   const err = normalizeError(res.data, status);
+  if (err.code === 'NETWORK') netReporter.failure();
 
   // 令牌过期 → 重登一次再重试。只重试一次：无限重试会把服务端打爆，
   // 而且如果是"身份不对"，重试多少次都没用，只会让用户看到转圈。
@@ -137,7 +146,7 @@ function rawRequest(
       timeout: 12_000,
       success: (r) => resolve({ statusCode: r.statusCode, data: r.data }),
       // 网络层失败也要转成同一种错误形状 —— 否则上层要同时处理两种失败形态
-      fail: (e) => resolve({ statusCode: 0, data: { code: 'NETWORK', message: e?.errMsg ?? '网络异常' } }),
+      fail: (e) => resolve({ statusCode: 0, data: { code: 'NETWORK', message: e?.errMsg ?? '网络连不上，请检查网络后重试' } }),
     });
   });
 }
@@ -150,17 +159,19 @@ function normalizeError(data: unknown, status: number): ApiError {
 }
 
 function defaultMessage(code: string, status: number): string {
-  if (code === 'NETWORK') return '网络不太顺，请稍后重试';
-  if (status === 401) return '登录已过期，请重新进入';
-  if (status === 403) return '没有权限执行该操作';
-  if (status === 404) return '内容不见了';
-  if (status >= 500) return '服务暂时不可用，请稍后重试';
-  return '操作没有完成，请重试';
+  // 每一条都必须是「原因 + 下一步」。禁止只写「操作失败」「请稍后重试」——
+  // 用户看到那种话只能去问客服，等于把问题原样退回给他。
+  if (code === 'NETWORK') return '网络连不上，请检查网络后重试';
+  if (status === 401) return '需要重新打开小程序才能继续';
+  if (status === 403) return '这个操作当前不可用';
+  if (status === 404) return '内容不见了，请返回上一页';
+  if (status >= 500) return '服务暂时不可用，稍等一会儿再试';
+  return '这一步没有完成，可以再试一次';
 }
 
 /** 供 UI 用：把任意异常转成人话（不解析后端文案时用） */
 export function errText(e: unknown): string {
   if (e instanceof ApiFailure) return e.message;
   if (e instanceof Error) return e.message;
-  return '操作没有完成，请重试';
+  return '这一步没有完成，可以再试一次';
 }

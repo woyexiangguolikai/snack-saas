@@ -3,6 +3,7 @@ import { ERR, BizError } from '../core/errors';
 import { currentContext } from '../core/logger';
 import { OwnerGuard } from '../core/owner.guard';
 import { tenantOf } from '../core/tenant-scope';
+import type { OrderStatus } from '../core/types';
 import { OrderService } from './order.service';
 
 /**
@@ -37,7 +38,37 @@ export class MerchantOrderController {
     return {
       groups,
       totalPending: groups.reduce((s, g) => s + g.pendingCount, 0),
+      // 配送清单为空时页面要显示"今天送了 N 单 · 营收 ¥X"（空态 ⑦）——
+      // 这是**好消息型空态**，只写"没有订单"会被读成故障。
+      // 与 groups 同一个请求返回：两个数字必须同源同刻，否则会出现
+      // "待送 0 单"和"今日营收"对不上的尴尬组合。
+      today: await this.orders.todayDeliverySummary(t),
     };
+  }
+
+  /**
+   * 订单管理列表（网页后台 W-07）—— 全状态 + 检索 + 分页。
+   *
+   * ⚠️ 同样必须声明在 `@Get(':orderNo')` 之前：空路径与一段路径会撞。
+   */
+  @Get()
+  async list(
+    @Param('tenantCode') tenantCode: string,
+    @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const statuses = (status ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) as OrderStatus[];
+    return this.orders.merchantOrderList(tenantOf(tenantCode), {
+      statuses,
+      keyword: keyword?.trim() || undefined,
+      limit: limit ? Number(limit) : 20,
+      offset: offset ? Number(offset) : 0,
+    });
   }
 
   /** 订单详情（含房间号） */
@@ -119,7 +150,7 @@ export class MerchantOrderController {
 
   /**
    * 手动跑一次"超时关单"。
-   * 定时任务必须能手动触发 —— 否则验证「30 分钟未支付自动关闭」只能真的等 30 分钟，
+   * 定时任务必须能手动触发 —— 否则验证「15 分钟未支付自动关闭」只能真的等 15 分钟，
    * 那种验证实际上永远不会被执行。
    */
   @Post('jobs/close-expired')
@@ -144,8 +175,8 @@ function actor(): string {
 
 /**
  * 定时任务的 `now` 注入。
- * 只为了让"30 分钟未支付自动关闭""12 小时没点送达自动完成"这两条能被真实验收 ——
- * 否则只能干等 30 分钟 / 12 小时，那种验证实际永远不会被执行。
+ * 只为了让"15 分钟未支付自动关闭""12 小时没点送达自动完成"这两条能被真实验收 ——
+ * 否则只能干等 15 分钟 / 12 小时，那种验证实际永远不会被执行。
  * 业务时间敏感判断（能不能下单）仍然只用服务端时间，不开放注入。
  */
 function injectedNow(raw?: string): Date {

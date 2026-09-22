@@ -50,6 +50,18 @@ export class TenantResolveController {
   }
 
   /**
+   * 网页后台用登录码换店主令牌。
+   *
+   * 码由店主本人在小程序里生成（5 分钟有效、一次性、按租户限流），
+   * 所以**这个接口不需要任何先验凭据** —— 码本身就是凭据。
+   */
+  @Post('merchant/web-login')
+  @HttpCode(200)
+  async webLogin(@Body() body: { tenantCode?: string; code?: string }) {
+    return this.tenants.redeemWebLoginCode(body?.tenantCode ?? '', body?.code ?? '');
+  }
+
+  /**
    * 商户登录（CM-01）：学生端「我是店家」入口走这一条。
    *
    * 与学生登录**同域、不同路径**：同一个 AppID 下，学生的微信身份若是本店店主，

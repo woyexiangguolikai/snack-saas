@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import SnSheet from './SnSheet.vue';
 import SnAmount from './SnAmount.vue';
 import SnStepper from './SnStepper.vue';
+import { toast } from '../utils/ui';
+import { CUSTOMER_COPY } from '../utils/copy';
 import type { StorefrontItem } from '../utils/api';
 
 /**
@@ -57,8 +59,8 @@ function onQty(v: number) {
 /* uni 是运行时全局对象，**不能写进模板表达式** ——
  * Vue 的模板作用域只解析 setup 暴露的绑定与组件自身属性，拿不到全局 uni。
  * 这类错误 vue-tsc 也不报，只在真机上表现为"点了没反应"，所以统一收敛成方法。 */
-function onOverflow(): void {
-  uni.showToast({ title: '本栋库存不足了', icon: 'none' });
+function onOverflow(max: number): void {
+  toast(CUSTOMER_COPY.stockLimit(max));
 }
 
 function onAlreadyInCart(): void {

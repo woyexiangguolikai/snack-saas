@@ -8,6 +8,7 @@ import SnKeyValue from '../../components/SnKeyValue.vue';
 import SnDivider from '../../components/SnDivider.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
 import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnBuildingBar from '../../components/SnBuildingBar.vue';
 import SnButton from '../../components/SnButton.vue';
 import { useSessionStore } from '../../stores/session';
 import { useThemeStore } from '../../stores/theme';
@@ -15,8 +16,10 @@ import { useShop } from '../../composables/useShop';
 import { useAsync } from '../../composables/useAsync';
 import { api, newClientKey, type Address } from '../../utils/api';
 import { formatAmount } from '../../utils/amount';
-import { toast, switchTab, TAB } from '../../utils/ui';
+import { toast, confirm, switchTab, TAB } from '../../utils/ui';
+import { CUSTOMER_COPY } from '../../utils/copy';
 import { takePickedAddress } from '../../utils/pick';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-10 结算页。
@@ -30,8 +33,11 @@ import { takePickedAddress } from '../../utils/pick';
  *    这是整个系统里最贵的一类错误 —— 货送到学生不在的那栋楼。
  *    前端先拦一次（给明确引导），服务端再拦一次（前端拦不住的请求仍被拒）。
  *
- * ③ **截单提醒前置**。不能等点提交才说"已截单"：那时候学生已经挑好东西、
- *    填好备注，一次失败挫败感很强。进页面就把时间窗口状态摆出来。
+ * ③ **不能下单时整页替换，而不是页内一条提示**（§5.3）。
+ *    不能等点提交才说"已截单"：那时候学生已经挑好东西、填好备注，
+ *    一次失败挫败感很强。但"页内提示 + 置灰按钮"也不够 —— 学生在置灰按钮上
+ *    反复点，每次都被拒。所以截单 / 本栋停送 / 休息中一律换成整页状态，
+ *    而且**购物车一件都不清**：这是他唯一会心疼的东西。
  *
  * ④ **幂等键在进入页面时生成一次**。它代表"这一次提交意图"。
  *    网络超时后重试必须复用同一个 key（否则下出两单）；
@@ -127,7 +133,11 @@ const shortCents = computed(() => Math.max(0, minAmountCents.value - amountCents
 const blockReason = computed(() => {
   if (needLogin.value) return loginHint.value;
   if (shop.cart.isEmpty) return '购物车是空的';
-  if (shop.cart.hasInvalid) return `「${shop.cart.invalidNames.join('、')}」在本栋已售完，请先回购物车移出`;
+  // §5.4-3：说清是哪个商品、哪一栋，并给出下一步。购物车其余商品**一件都不动** ——
+  // 让学生自己移出，而不是替他清空后再告诉他不行。
+  if (shop.cart.hasInvalid) {
+    return CUSTOMER_COPY.soldOut(`「${shop.cart.invalidNames.join('、')}」`, shop.buildingName.value);
+  }
   if (!pickedAddress.value) return '请先添加收货地址';
   if (crossBuilding.value) return `地址在「${addressBuildingName.value}」，与当前「${shop.buildingName.value}」不是同一栋，请重新选择`;
   if (!shop.orderable.value) return shop.gate.value?.message ?? '当前不可下单';
@@ -137,7 +147,41 @@ const blockReason = computed(() => {
 
 const canSubmit = computed(() => !blockReason.value && !submitting.value);
 
+/**
+ * 首屏还没到齐（闸门或地址任一未定）时不给表单。
+ *
+ * 不给的后果是"先闪一版能提交的界面、再被闸门打回"：学生会有点提交的窗口，
+ * 而那个窗口里的提交必然失败。宁可多等 100ms，也不要给他一个假的"可以下单"。
+ * 注意 gateErr 要放行 —— 闸门拉失败时不能一直停在骨架，要让他看见错误与重试。
+ */
+const initialLoading = computed(
+  () => addrs.phase.value === 'loading' || (!shop.gate.value && !shop.gateErr.value),
+);
+
 /* ------------------------------------------------------------- 操作 */
+
+/**
+ * 「送到别的楼栋」= 回首页换楼栋。
+ *
+ * 换楼栋**会清空购物车**（跨栋的商品与库存完全不同，这是定死的规则 §4.5），
+ * 所以必须先问一句：§5.3 明确要求这种情况触发购物车清空确认 ——
+ * 一声不响把车清掉，是这个产品里最贵的一类错误。
+ */
+async function goOtherBuilding(): Promise<void> {
+  if (!shop.cart.isEmpty) {
+    const ok = await confirm(
+      '换楼栋会清空购物车',
+      `购物车里还有 ${shop.cart.count} 件商品，换楼栋后需要重新挑一次。要继续吗？`,
+      '去换楼栋',
+    );
+    if (!ok) return;
+  }
+  gotoHome();
+}
+
+function reloadGate(): void {
+  void shop.loadGate();
+}
 
 function gotoAddressList(): void {
   uni.navigateTo({ url: '/pages/address/list?select=1' });
@@ -165,8 +209,13 @@ async function submit(): Promise<void> {
     uni.redirectTo({ url: `/pages/order/pay-result?orderNo=${r.order.orderNo}` });
   } catch (e) {
     // 失败时**不换 key**：这一次提交意图还没成功，重试要能命中幂等
-    const msg = e instanceof Error ? e.message : '提交没有成功，请重试';
-    toast(msg);
+    //
+    // §5.4-2：提交失败必须先说清"数据保不保留"。购物车一件都没动，所以要**主动说出来** ——
+    // 不说的话，学生会以为刚才挑的都白挑了，转身就走；等他再回来，
+    // 那个（他以为已经没了的）购物车也不会去看了。
+    // 顺序不能反："还在吗"永远比"为什么失败"更急。
+    const why = e instanceof Error ? e.message : '';
+    toast(why ? `订单提交没成功，你的购物车还在。${why}` : '订单提交没成功，你的购物车还在。可以再试一次');
     // 库存 / 闸门类失败：刷新一次闸门与地址，避免界面上还显示"可以下单"
     await shop.loadGate();
   } finally {
@@ -178,6 +227,8 @@ async function submit(): Promise<void> {
 <template>
   <view class="ck" :style="theme.themeStyle">
     <SnNavBar title="确认订单" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="ck__scroll">
       <!-- 未登录 / 无法下单：先把原因说清楚，而不是给一堆点不动的控件 -->
@@ -199,6 +250,29 @@ async function submit(): Promise<void> {
           desc="回首页挑几件商品再来结算。"
           primary-text="去逛逛"
           @primary="gotoHome"
+        />
+      </view>
+
+      <!-- 首屏未到齐：不给"可以提交"的假界面 -->
+      <SnSkeleton v-else-if="initialLoading" variant="text" />
+
+      <!--
+        今天做不了（已截单 / 本栋停送 / 店家休息 / 两道闸门）—— **整页替换**。
+        §5.3：这类状态下"选地址、点提交"都不可能成功，留着只会让学生反复点、每次被拒。
+        §5.3 第一原则：**不让用户丢数据** —— 购物车一件都不动，所以这里一个 clear 都没有。
+        §6.4 / AC-02：三种"今天做不了"共用这一张模板、同一种灰，差别只在标题与恢复时间。
+      -->
+      <view v-else-if="shop.noOrderView.value" class="ck__pad">
+        <SnStateBlock
+          tone="off"
+          glyph="—"
+          :title="shop.noOrderView.value.title"
+          :desc="shop.noOrderView.value.text"
+          :next-text="shop.noOrderView.value.recovery ?? ''"
+          :primary-text="shop.multiBuilding.value ? '送到别的楼栋' : '回首页看看'"
+          secondary-text="重新确认"
+          @primary="goOtherBuilding"
+          @secondary="reloadGate"
         />
       </view>
 
@@ -237,9 +311,14 @@ async function submit(): Promise<void> {
         <view class="ck__block">
           <view class="ck__brow">
             <text class="ck__blabel">配送楼栋</text>
-            <view class="ck__bchip">
-              <text class="ck__bchiptext">{{ shop.buildingName.value || '未选择' }}</text>
-            </view>
+            <!-- 这一页楼栋**不能改**（改了就要清购物车），
+                 所以不给箭头、不可点；但形态与首页完全一致（AC-01）。 -->
+            <SnBuildingBar
+              :name="shop.buildingName.value"
+              placeholder="未选择"
+              :pickable="false"
+              :chevron="false"
+            />
           </view>
           <text class="ck__bnote">
             楼栋决定库存与配送路线，所以不能在这一页改。
@@ -426,19 +505,7 @@ async function submit(): Promise<void> {
   font-size: var(--fs-body);
   color: var(--ink-700);
 }
-.ck__bchip {
-  height: 32px;
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-sm);
-  background: var(--building-chip-bg);
-  display: flex;
-  align-items: center;
-}
-.ck__bchiptext {
-  font-size: var(--fs-sub);
-  font-weight: var(--fw-semibold);
-  color: var(--building-chip-fg);
-}
+/* 楼栋牌不再在此定义 —— 见 SnBuildingBar（AC-01 单一实现） */
 .ck__bnote {
   display: block;
   margin-top: var(--sp-2);

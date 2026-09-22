@@ -8,20 +8,27 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w @snack/tokens && npm run build -w @snack/server && npm run build -w @snack/mini",
+    "build": "npm run build -w @snack/tokens && npm run build -w @snack/server && npm run build -w @snack/mini && npm run build -w @snack/web",
     "build:server": "npm run build -w @snack/tokens && npm run build -w @snack/server",
     "build:mini": "npm run tokens:sync -w @snack/mini && npm run build:mp -w @snack/mini && npm run build:h5 -w @snack/mini",
-    "typecheck": "npm run typecheck -w @snack/tokens && npm run typecheck -w @snack/server && npm run typecheck -w @snack/mini",
+    "build:web": "npm run build -w @snack/web",
+    "typecheck": "npm run typecheck -w @snack/tokens && npm run typecheck -w @snack/server && npm run typecheck -w @snack/mini && npm run typecheck -w @snack/web",
     "check:copy": "node scripts/check-copy.mjs",
+    "check:error-copy": "node scripts/check-error-copy.mjs",
+    "check:ac": "node scripts/check-ac.mjs",
     "verify:server": "npm run check:copy && npm run build:server && npm run smoke",
     "verify:mini": "npm run verify -w @snack/mini",
-    "verify": "npm run verify:server && npm run verify:mini",
+    "verify:web": "npm run verify -w @snack/web",
+    "verify": "npm run check:error-copy && npm run check:ac && npm run verify:server && npm run verify:mini && npm run verify:web",
     "smoke": "npm run build -w @snack/tokens && npm run smoke -w @snack/server",
     "seed:dev": "node scripts/seed-dev.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "stress": "node scripts/stress.mjs",
     "dev:server": "npm run dev -w @snack/server",
     "start:server": "npm run start -w @snack/server",
     "dev:mp": "npm run tokens:sync -w @snack/mini && npm run dev:mp -w @snack/mini",
-    "dev:h5": "npm run tokens:sync -w @snack/mini && npm run dev:h5 -w @snack/mini"
+    "dev:h5": "npm run tokens:sync -w @snack/mini && npm run dev:h5 -w @snack/mini",
+    "dev:web": "npm run dev -w @snack/web"
   },
   "engines": {
     "node": ">=20"

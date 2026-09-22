@@ -165,17 +165,33 @@ LOG_LEVEL=info
 
 ---
 
-## 6. 网页端（商户网页 / 平台后台）
+## 6. 网页端（商户后台 / 平台后台）
+
+### 6.1 商户网页后台（apps/web，`/admin/`）
 
 ```bash
-# 本机构建后上传，或服务器上构建
-npm run build:h5 -w @snack/mini
-# 产物：apps/mini/dist/build/h5
-rsync -a apps/mini/dist/build/h5/ root@<server>:/www/wwwroot/snack/web/admin/
+npm run build:web
+# 产物：apps/web/dist
+rsync -a apps/web/dist/ root@<server>:/www/wwwroot/snack/web/admin/
 ```
 
-> 商户网页与平台后台是同一个 H5 产物、按路由分区（`/#/admin/...` 与 `/#/platform/...`）。
-> 上线前若拆成两个站点，只需改 `location` 的 alias 指向，前端不用改。
+> **部署到 `/admin/` 子路径时**，vite 的 `base` 与路由 `history` 的 base 要一致，
+> 否则刷新子页面会 404（History 模式下 Nginx 的 `try_files` 已经兜住了，
+> 但静态资源路径仍需相对）。当前产物用的是**同源相对路径**：
+> 接口走 `/api` 与 `/t`（由 Nginx 反代），页面资源走相对于 `/admin/` 的路径，
+> 所以**不需要在前端写死任何域名** —— 换环境只改 Nginx，不用重新构建
+> （`apps/web/.env.example` 的 `VITE_API_BASE` 保持留空即可）。
+
+### 6.2 平台后台（暂用同一份 H5 产物占位）
+
+```bash
+npm run build:h5 -w @snack/mini
+rsync -a apps/mini/dist/build/h5/ root@<server>:/www/wwwroot/snack/web/platform/
+```
+
+> 平台后台真正的独立工程属 S6。当前 `/platform/` 由 Nginx 的
+> `allow 127.0.0.1 / 内网 / deny all` 挡住公网，**暴露前必须接入真实账号体系**
+> （与 `PLATFORM_ADMIN_KEY` 一起替换）。
 
 ---
 

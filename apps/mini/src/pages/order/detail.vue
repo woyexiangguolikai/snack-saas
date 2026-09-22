@@ -8,13 +8,14 @@ import SnKeyValue from '../../components/SnKeyValue.vue';
 import SnDivider from '../../components/SnDivider.vue';
 import SnButton from '../../components/SnButton.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
-import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnPageSkeleton from '../../components/SnPageSkeleton.vue';
 import { useThemeStore } from '../../stores/theme';
 import { useSessionStore } from '../../stores/session';
 import { useCartStore } from '../../stores/cart';
 import { api } from '../../utils/api';
 import { useCountdown } from '../../composables/useCountdown';
-import { toast, confirm, switchTab, TAB } from '../../utils/ui';
+import { toast, confirm, switchTab, TAB, pullRefresh } from '../../utils/ui';
+import { CUSTOMER_COPY } from '../../utils/copy';
 
 /**
  * S-14 订单详情。
@@ -63,10 +64,11 @@ onLoad((query) => {
   void load();
 });
 
-onPullDownRefresh(async () => {
-  await load(true);
-  uni.stopPullDownRefresh();
-});
+onPullDownRefresh(() =>
+  pullRefresh(async () => {
+    await load(true);
+  }),
+);
 
 async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true;
@@ -131,7 +133,7 @@ async function reorder(): Promise<void> {
     }
     switchTab(TAB.home);
     const parts = [`${r.addedCount} 件已放回购物车`];
-    if (r.partial.length) parts.push(`${r.partial.length} 件库存不足、少放了`);
+    if (r.partial.length) parts.push(CUSTOMER_COPY.reorderPartial(r.partial.length));
     if (r.missing.length) parts.push(`${r.missing.length} 件已经下架`);
     toast(parts.join('，'));
   } catch (e) {
@@ -170,11 +172,9 @@ async function doCancel(): Promise<void> {
     <SnNavBar title="订单详情" @back="onBack" />
 
     <scroll-view scroll-y class="od__scroll">
-      <view v-if="loading" class="od__skel">
-        <SnSkeleton variant="title" />
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="text" />
-      </view>
+      <!-- 骨架：状态卡 · 小票明细（**含合计行**）· 键值卡 · 底部操作区。
+           漏掉合计行 → 数据到达时下面会多出一行（AC-19：与真实布局同构）。 -->
+      <SnPageSkeleton v-if="loading" preset="orderDetail" />
 
       <SnStateBlock
         v-else-if="errText"

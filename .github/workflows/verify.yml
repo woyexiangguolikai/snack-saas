@@ -1,0 +1,103 @@
+# 代码审查门禁 —— 对应 docs/CODE_REVIEW.md 第 5 节
+#
+# 为什么必须有这个文件：文档里写"门禁全绿才开审"，但如果门禁要靠作者在自己机器上手动跑，
+# 它就不是门禁，是自觉。自觉在赶进度时第一个被牺牲。
+#
+# 两个 job 的分工：
+#   · verify       —— 每个 PR 都跑。**本机地址只警告**（开发分支带 127.0.0.1 是合法的）
+#   · release-gate —— 只在合入 main / 打 tag / 手动触发时跑。本机地址**直接失败**
+#
+# 为什么 release-gate 要单独一个 job 而不是加参数：判据不同。
+# 开发分支的产物允许指向本机服务，发布产物不允许 —— 这是两条规则，不是一个规则的两种模式。
+
+name: 代码审查门禁
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+# 同一分支的新提交取消上一次未跑完的任务：排队等旧结果没有意义
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 全量验收
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 分步跑而不是 npm run verify 一把梭：
+      # 失败时能一眼看出是"钱算错了"还是"色值硬编码了"，省掉一次翻日志
+      - name: 类型检查（tokens + server + mini）
+        run: npm run typecheck
+
+      - name: 服务端验收（中性文案 + 构建 + 冒烟 119 项）
+        run: npm run verify:server
+
+      - name: 小程序验收（Token 漂移 + 硬编码色值 + 引用完整性 + 类型 + 构建 + 组件注册）
+        run: npm run verify:mini
+
+      - name: 构建产物存档（排查真机问题时需要拿到与 CI 完全一致的包）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mp-weixin-${{ github.sha }}
+          path: apps/mini/dist/build/mp-weixin
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release-gate:
+    name: 发布卡口（产物不得含本机地址）
+    # 只有"这版可能要发出去"的场景才跑：合入主干、打 tag、手动触发
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 写入发布用的接口地址
+        env:
+          # 发布用的后端地址。仓库里不写死 —— 它属于环境配置，不属于代码。
+          # 在 GitHub 仓库 Settings → Secrets and variables → Actions → Variables
+          # 里加一个 VITE_API_BASE（例如 https://api.example.com），否则这一步直接失败。
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+        run: |
+          if [ -z "$VITE_API_BASE" ]; then
+            echo "::error::未配置仓库变量 VITE_API_BASE —— 发布产物必须指向 https + 已备案域名。"
+            echo "  路径：Settings → Secrets and variables → Actions → Variables → New repository variable"
+            exit 1
+          fi
+          # 刻意写 .env.local（而不是用环境变量）：这是开发者本机用的同一条路径，
+          # CI 里跑的就是本机跑的那套机制，不给"CI 绿、本机红"留空间
+          printf 'VITE_API_BASE=%s\n' "$VITE_API_BASE" > apps/mini/.env.local
+
+      - name: 编译 Token 并构建小程序
+        # tokens.generated.css 是生成物（不入库），必须先派生再构建，否则产物无样式
+        run: npm run tokens:sync -w @snack/mini && npm run build:mp -w @snack/mini
+
+      - name: 发布卡口 —— 产物里出现 127.0.0.1 / localhost 即失败
+        run: npm run check:build -w @snack/mini -- --release

@@ -6,15 +6,20 @@ import SnProductItem from '../../components/SnProductItem.vue';
 import SnAmount from '../../components/SnAmount.vue';
 import SnBadge from '../../components/SnBadge.vue';
 import SnBuildingSheet from '../../components/SnBuildingSheet.vue';
+import SnBuildingBar from '../../components/SnBuildingBar.vue';
 import SnProductSheet from '../../components/SnProductSheet.vue';
 import SnCartSheet from '../../components/SnCartSheet.vue';
-import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnUndoBar from '../../components/SnUndoBar.vue';
+import SnPageSkeleton from '../../components/SnPageSkeleton.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
+import SnPartialFailure from '../../components/SnPartialFailure.vue';
 import { useSessionStore } from '../../stores/session';
 import { useThemeStore } from '../../stores/theme';
 import { useShop } from '../../composables/useShop';
 import { useAsync } from '../../composables/useAsync';
 import { api, type Category, type StorefrontItem } from '../../utils/api';
+import { callShop } from '../../utils/contact';
+import { pullRefresh } from '../../utils/ui';
 
 /**
  * S-06 分类页。
@@ -50,11 +55,12 @@ onLoad(async () => {
   if (!activeCat.value) activeCat.value = cats.data.value?.items?.[0]?.id ?? null;
 });
 
-onPullDownRefresh(async () => {
-  await Promise.all([shop.loadGate(), cats.reload(), goods.reload()]);
-  shop.cart.syncLimits(goods.data.value?.items ?? []);
-  uni.stopPullDownRefresh();
-});
+onPullDownRefresh(() =>
+  pullRefresh(async () => {
+    await Promise.all([shop.loadGate(), cats.reload(), goods.reload()]);
+    shop.cart.syncLimits(goods.data.value?.items ?? []);
+  }),
+);
 
 /** 右栏内容：某个分类在该栋的可售商品。没有分类归属的用 0 表示 */
 const current = computed(() => {
@@ -79,12 +85,17 @@ const multiBuilding = computed(() => shop.multiBuilding.value);
 const orderable = computed(() => shop.orderable.value);
 const gate = shop.gate;
 
-async function switchBuilding(id: number): Promise<void> {
-  activeProduct.value = null;
-  await shop.pickBuilding(id);
+async function reloadGoods(): Promise<void> {
+  // 撤销切楼栋时也要用它（R-5）：列表不重拉，屏幕上是新栋商品、车里是旧栋货
   goods.reset();
   await goods.load();
   shop.cart.syncLimits(goods.data.value?.items ?? []);
+}
+
+async function switchBuilding(id: number): Promise<void> {
+  activeProduct.value = null;
+  await shop.pickBuilding(id, reloadGoods);
+  await reloadGoods();
 }
 
 function pickCat(id: number): void {
@@ -109,26 +120,37 @@ function onBack(): void {
 
     <!-- 楼栋牌：与首页同一枚签名组件（AC-01：六处复用必须完全一致） -->
     <view class="cat__bwrap">
-      <view class="cat__bchip" @click="multiBuilding && (showBuilding = true)">
-        <text class="cat__bname">{{ buildingName || '选择宿舍楼' }}</text>
-        <text v-if="multiBuilding" class="cat__bchev">⌄</text>
-      </view>
+      <SnBuildingBar
+        :name="buildingName"
+        placeholder="选择宿舍楼"
+        :chevron="multiBuilding"
+        @pick="showBuilding = true"
+      />
     </view>
 
+    <!-- 局部失败（§5.1 ②）：分类挂了，商品还在。
+         此时 activeCat 停在 null，右栏会把本栋**全部商品**渲染出来（见 current 计算），
+         所以学生照样能点、能加购、能下单 —— 只是左边暂时没有分类可切。
+         绝不能因为一个次要请求就让整页变成"没有可买的商品"。 -->
+    <SnPartialFailure
+      v-if="cats.error.value && (goods.data.value?.items.length ?? 0) > 0"
+      title="分类没加载出来"
+      safe="已显示的商品可以直接下单，左边暂时没有分类可以切换。"
+      retry-label="只重试分类"
+      @retry="cats.reload()"
+    />
+
     <view class="cat__body">
-      <!-- 骨架 -->
-      <view v-if="goods.phase.value === 'loading'" class="cat__skel">
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="text" />
-      </view>
+      <!-- 骨架：楼栋牌 44 + 左栏 92px×5 行 + 右栏两列网格。
+           左栏宽度必须与真实一致，否则数据到达时右栏会横向位移。 -->
+      <SnPageSkeleton v-if="goods.phase.value === 'loading'" preset="category" />
 
       <SnStateBlock
         v-else-if="goods.phase.value === 'error'"
         tone="danger"
         glyph="!"
         title="商品没加载出来"
-        :desc="goods.error.value?.message ?? '网络不太顺，请稍后重试'"
+        :desc="goods.error.value?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次'"
         primary-text="重新加载"
         @primary="goods.reload()"
       />
@@ -137,10 +159,12 @@ function onBack(): void {
         v-else-if="goods.isEmpty.value"
         tone="off"
         glyph="—"
-        title="本栋暂时没有可买的商品"
-        desc="店家可能在补货，也可能是这栋还没上架商品。"
-        :primary-text="multiBuilding ? '切换楼栋' : ''"
-        @primary="showBuilding = true"
+        :title="`${buildingName || '这栋楼'}今天没有可卖的`"
+        :desc="`${buildingName || '你选的这栋楼'}的商品还没上架，不是你的操作问题。店家可能在补货，也可能这栋今天不排配送。`"
+        :primary-text="multiBuilding ? '切换楼栋' : '联系店家'"
+        :secondary-text="multiBuilding ? '联系店家' : ''"
+        @primary="multiBuilding ? (showBuilding = true) : callShop()"
+        @secondary="callShop()"
       />
 
       <!-- 左右分栏 -->
@@ -213,12 +237,15 @@ function onBack(): void {
       :item="activeProduct"
       :qty="activeProduct ? shop.qtyOf(activeProduct.productId) : 0"
       :orderable="orderable"
-      :gate-message="gate?.message ?? ''"
+      :gate-message="gate?.title ?? ''"
       :building-name="buildingName"
       @add="activeProduct && shop.addToCart(activeProduct)"
       @set-qty="(v: number) => activeProduct && shop.setQty(activeProduct.productId, v)"
     />
     <SnCartSheet v-model="showCart" :building-name="buildingName" @checkout="shop.gotoCheckout()" />
+
+    <!-- R-5 换楼栋的 5 秒撤销条（全局单例，只有这一处需要挂） -->
+    <SnUndoBar />
   </view>
 </template>
 
@@ -237,24 +264,7 @@ function onBack(): void {
   flex: none;
   padding: 0 var(--page-x) var(--sp-3);
 }
-.cat__bchip {
-  height: var(--building-chip-h);
-  border-radius: var(--building-chip-r);
-  background: var(--building-chip-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-}
-.cat__bname {
-  font-size: var(--fs-card);
-  font-weight: var(--fw-semibold);
-  color: var(--building-chip-fg);
-}
-.cat__bchev {
-  font-size: var(--fs-card);
-  color: var(--building-chip-fg);
-}
+/* 楼栋牌本身不再在此定义 —— 见 SnBuildingBar（AC-01 单一实现） */
 .cat__body {
   flex: 1;
   min-height: 0;

@@ -90,14 +90,27 @@ export function readNavMetrics(): NavMetrics {
   if (cached) return cached;
 
   const { statusBarHeight, windowWidth } = readWindow();
-  const capsule = readCapsule();
+  cached = computeNavMetrics(statusBarHeight, windowWidth, readCapsule());
+  return cached;
+}
 
+/**
+ * 纯计算部分，与 `uni.*` 解耦。
+ *
+ * 拆出来不是为了"好看"：真机差异只能靠一台台手机去试，而这里可以**在 Playground 里
+ * 用几组真实机型参数当场验算**（见 `pages/playground/index.vue` 的自检面板）。
+ * 把"我以为算对了"变成"这几个机型算对了"，代价只是把纯函数暴露出来。
+ */
+export function computeNavMetrics(
+  statusBarHeight: number,
+  windowWidth: number,
+  capsule: CapsuleRect | null,
+): NavMetrics {
+  // 导航栏与胶囊同高且垂直居中 → 胶囊上下的留白相等，所以总高 = 上下留白 + 胶囊高
   const measured = capsule ? (capsule.top - statusBarHeight) * 2 + capsule.height : FALLBACK_NAV_BAR;
   const navBarHeight = Math.max(MIN_NAV_BAR, Math.round(measured));
   const rightReserve = capsule ? Math.round(windowWidth - capsule.left + CAPSULE_GAP) : 0;
-
-  cached = { statusBarHeight, navBarHeight, rightReserve, capsule, windowWidth };
-  return cached;
+  return { statusBarHeight, navBarHeight, rightReserve, capsule, windowWidth };
 }
 
 export function useNavMetrics(): NavMetrics {

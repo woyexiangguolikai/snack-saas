@@ -28,6 +28,7 @@ import SnStickyBar from '../../components/SnStickyBar.vue';
 import { useThemeStore } from '../../stores/theme';
 import { THEME_SAMPLES } from '../../mock/theme-samples';
 import { formatAmount, parseAmount } from '../../utils/amount';
+import { computeNavMetrics, readNavMetrics } from '../../composables/useNavMetrics';
 
 /**
  * 组件 Playground —— S0 的退出条件就是「14 类原子组件全状态与设计系统一致」。
@@ -158,6 +159,43 @@ function buildChecks(): CheckItem[] {
 
   theme.reset();
   theme.applyTenantTheme(THEME_SAMPLES[0].scale, 't000001');
+
+  /* ---- A-14 顶部几何（状态栏 / 胶囊）---------------------------------------
+   * 这一组是"真机差异"的第一道防线。真机只能一台台试，但机型的**参数**可以在这里
+   * 当场验算 —— 算式错了就没必要上真机，算式对了再上真机确认手感。
+   * 参数取的是常见机型的量级（不是为了复刻某一台的具体数值）。 */
+  const iPhone = computeNavMetrics(47, 390, { top: 51, right: 368, bottom: 83, left: 281, width: 87, height: 32 });
+  eq('顶部几何 · iPhone 型导航栏高（与胶囊同高居中）', iPhone.navBarHeight, 40);
+  eq('顶部几何 · iPhone 型右侧留白（胶囊左沿 + 8px 呼吸位）', iPhone.rightReserve, 117);
+
+  const android = computeNavMetrics(24, 360, { top: 28, right: 357, bottom: 60, left: 270, width: 87, height: 32 });
+  eq('顶部几何 · 安卓型导航栏高', android.navBarHeight, 40);
+  eq('顶部几何 · 安卓型右侧留白', android.rightReserve, 98);
+
+  const noCapsule = computeNavMetrics(0, 375, null);
+  eq('顶部几何 · 量不到胶囊时回落到 44', noCapsule.navBarHeight, 44);
+  eq('顶部几何 · 无胶囊时不留右侧空白', noCapsule.rightReserve, 0);
+
+  const tiny = computeNavMetrics(44, 375, { top: 48, right: 368, bottom: 52, left: 281, width: 87, height: 4 });
+  out.push({
+    name: '顶部几何 · 导航栏高有下限（异常胶囊不会把标题压成一条线）',
+    detail: `胶囊高 4px → 导航栏 ${tiny.navBarHeight}px（下限 40）`,
+    ok: tiny.navBarHeight === 40,
+  });
+
+  const live = readNavMetrics();
+  out.push({
+    name: '顶部几何 · 当前设备实测',
+    detail:
+      `状态栏 ${live.statusBarHeight} · 导航栏 ${live.navBarHeight} · 右侧留白 ${live.rightReserve}` +
+      (live.capsule
+        ? ` · 胶囊 ${live.capsule.width}×${live.capsule.height} @top${live.capsule.top}`
+        : ' · 无胶囊（非小程序端）'),
+    // 小程序端必须量到状态栏与胶囊；H5 端没有胶囊，留白与导航栏都该是兜底值
+    ok: live.capsule
+      ? live.statusBarHeight > 0 && live.rightReserve > 0
+      : live.rightReserve === 0 && live.navBarHeight === 44,
+  });
 
   return out;
 }

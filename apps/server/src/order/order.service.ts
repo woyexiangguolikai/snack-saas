@@ -5,8 +5,9 @@ import { resolveBuildingConfig } from '../core/config-resolver';
 import { env } from '../core/env';
 import { ERR, BizError } from '../core/errors';
 import { AppLogger } from '../core/logger';
+import { bizDayOf, bizDayStartOf } from '../core/time-window';
 import { REPO_FACTORY } from '../core/repo.factory';
-import type { OrderRecord, OrderStatus, RepoFactory } from '../core/repository';
+import type { OrderRecord, OrderStatus, OrphanPayRecord, RepoFactory } from '../core/repository';
 import {
   ORDER_TIMEOUT,
   feeOfCents,
@@ -179,8 +180,18 @@ export class OrderService {
       });
       if (!r.ok) {
         await this.releaseReservations(tenantCode, input.buildingId, reserved, orderNo, '下单失败回滚');
-        const why = r.reason === 'not_on_shelf' ? '本栋未上架' : '库存不足';
-        throw new BizError(ERR.ORDER_OUT_OF_STOCK, `「${l.nameSnap}」${why}，请调整数量后重试`);
+        // §5.4-3：库存类失败必须说清**哪个商品、哪一栋**，并给出下一步。
+        // 只说"库存不足"等于把问题原样退回：学生不知道是哪一件、
+        // 也不知道该改数量还是该把商品移出购物车。
+        // 楼栋名一定要带上 —— 同一个人可能在两栋楼都有收货地址。
+        const product = `「${l.nameSnap}」`;
+        const where = `「${building.name}」`;
+        throw new BizError(
+          ERR.ORDER_OUT_OF_STOCK,
+          r.reason === 'not_on_shelf'
+            ? `${product}在${where}未上架，请移出后重新提交`
+            : `${product}在${where}已售罄，请移出后重新提交`,
+        );
       }
       reserved.push({ productId: l.productId, qty: l.qty });
     }
@@ -247,7 +258,7 @@ export class OrderService {
    * **未配置商户号时返回 200 + `configured:false`，而不是抛错。**
    * 理由：这不是学生做错了什么，也不是服务故障 —— 它是"这家店还没接入微信支付"
    * 这样一个**正常的中间状态**。抛错会让前端走进通用错误页，
-   * 把"订单已保留、30 分钟内可付"这个关键信息丢掉；而学生最担心的恰恰是
+   * 把"订单已保留、15 分钟内可付"这个关键信息丢掉；而学生最担心的恰恰是
    * "我的单还在不在"。
    *
    * 订单状态不做任何变动：预占继续有效，超时关单任务照常兜底。
@@ -351,7 +362,26 @@ export class OrderService {
   async onPayCallback(tenantCode: string, input: PayCallbackInput): Promise<PayCallbackResult> {
     const repo = this.repos.tenant(tenantCode);
     const order = await repo.findOrder(input.orderNo);
-    if (!order) throw BizError.notFound(ERR.ORDER_NOT_FOUND, `订单不存在：${input.orderNo}`);
+    if (!order) {
+      // ---- 孤儿支付：收到钱，但订单不存在 ------------------------------------
+      // 三种成因（误删 / 回调串租户 / 伪造）**无法自动区分**，所以只做两件事：
+      //   ① 留一条痕（幂等键 = 租户 + txnId，回调重放不会记成三笔）
+      //   ② 仍然抛错，不返回 SUCCESS（不能让微信以为这单已经处理好了）
+      // 绝不自动编一条订单出来：金额、商品、楼栋全是猜的，
+      // 编出来只是把"查得出的账"变成"查不出的账"。
+      const orphan = await this.repos.platform().appendOrphanPay({
+        tenantCode,
+        orderNo: input.orderNo,
+        txnId: input.txnId,
+        amountCents: input.amountCents,
+        paidAt: input.paidAt ? input.paidAt.toISOString() : null,
+      });
+      this.logger.error('收到支付回调但订单不存在（孤儿支付）', {
+        tenantCode, orderNo: input.orderNo, txnId: input.txnId, amountCents: input.amountCents,
+        alreadyRecorded: !orphan.created,
+      });
+      throw BizError.notFound(ERR.ORDER_NOT_FOUND, `订单不存在：${input.orderNo}`);
+    }
 
     // ---- 金额校验：不符则**不落任何状态**，单独吵一声让人去查 ----------------
     // 金额不符通常是两类事：回调被篡改，或订单金额在支付途中被改过。
@@ -711,7 +741,6 @@ export class OrderService {
   /* ========================================================================
    * ⑤ 送达兜底
    * ======================================================================*/
-
   /**
    * 「配送中」超时自动置为已送达。
    *
@@ -737,6 +766,54 @@ export class OrderService {
       }
     }
     return { completed };
+  }
+
+  /* ========================================================================
+   * ⑤-b 对账巡检：支付成功但副作用缺失 / 孤儿支付
+   * ======================================================================*/
+
+  /**
+   * 「支付成功但订单没走完」的巡检 —— 定时任务里最容易被忽略、出事最贵的那一个。
+   *
+   * 两类问题分开处理，**判据完全不同**：
+   *
+   * ① **订单在，但副作用没做全**（库存预占没转已售 / 账本没登记待扣）
+   *    → 直接复用 `ensurePaidSideEffects` 自愈。它每一项都先查"做过没有"，
+   *      所以对已经正常的订单重复调用是空操作，不会重复扣、不会重复记账。
+   *      这类是**能自己好的**，就应该让它自己好 —— 生成工单让人来点一遍，
+   *      只是把机器能做的事变成人的负担。
+   *
+   * ② **孤儿支付**（收到钱但没有订单）
+   *    → **不自愈**，只汇总上报。原因写在 `onPayCallback` 里：
+   *      成因无法自动区分，凭空编单只会把可查的账变成查不出的账。
+   *      这里做的是"确保它进了告警"，而不是"想办法把它变得看不见"。
+   */
+  async patrolPaidIntegrity(
+    tenantCode: string,
+    now = new Date(),
+  ): Promise<{ scanned: number; repairs: Array<{ orderNo: string; items: string[] }>; orphanPays: OrphanPayRecord[]; newOrphanPays: number }> {
+    const repo = this.repos.tenant(tenantCode);
+    const platform = this.repos.platform();
+    // 只扫"已经付过钱"的单：未支付的单本来就不该有这三项副作用
+    const { items } = await repo.listOrders({ limit: 100_000 });
+    const paid = items.filter((o) => o.payStatus === 'paid');
+
+    const repairs: Array<{ orderNo: string; items: string[] }> = [];
+    for (const o of paid) {
+      try {
+        const items = await this.ensurePaidSideEffects(tenantCode, o);
+        // 只用「库存预占转已售」作判据：账本登记在正常路径下也会偶尔重放，
+        // 那不是问题；库存那一项缺了才是真的会算错账
+        if (items.length) repairs.push({ orderNo: o.orderNo, items });
+      } catch (e) {
+        // 单笔失败不能中断整批巡检
+        this.logger.error('对账巡检自愈失败', { tenantCode, orderNo: o.orderNo, err: String(e) });
+      }
+    }
+
+    const orphans = await platform.listOrphanPays({ tenantCode, status: 'open', limit: 1000 });
+    void now;
+    return { scanned: paid.length, repairs, orphanPays: orphans, newOrphanPays: orphans.length };
   }
 
   /* ========================================================================
@@ -783,6 +860,40 @@ export class OrderService {
     return [...groups.values()].sort(
       (a, b) => (byId.get(a.buildingId)?.sort ?? 0) - (byId.get(b.buildingId)?.sort ?? 0),
     );
+  }
+
+  /**
+   * 今日配送日报 —— 只回答两个问题：**今天送了几单、收了多少钱**。
+   *
+   * 为什么配送清单需要它：
+   *   "没有待送订单"对商户来说是**好消息**，但一个只说"没有订单"的空态
+   *   读起来更像故障 —— 商户会怀疑是不是订单没进来。
+   *   把今天已经送掉的单数与金额摆在旁边，空态就从"出事了"变成"今天干完了"。
+   *
+   * 口径：
+   *   · **按送达时间（deliveredAt）落在业务日**，而不是按下单时间 ——
+   *     夜里 23:50 下的单第二天早上送达，它属于第二天的那一趟。
+   *   · 只统计 `delivered`（v1 终态），不含取消/退款 —— 退了的不算营收。
+   *   · 金额用 `totalCents`（实付：商品 + 配送费），与商户看到的"营收"一致。
+   */
+  async todayDeliverySummary(
+    tenantCode: string,
+    now: Date = new Date(),
+  ): Promise<{ day: string; deliveredCount: number; deliveredCents: number }> {
+    const repo = this.repos.tenant(tenantCode);
+    const dayStart = bizDayStartOf(now);
+    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const delivered = await repo.listOrdersByStatus(['delivered']);
+    const today = delivered.filter((o) => {
+      if (!o.deliveredAt) return false;
+      const t = new Date(o.deliveredAt).getTime();
+      return Number.isFinite(t) && t >= dayStart.getTime() && t < dayEnd.getTime();
+    });
+    return {
+      day: bizDayOf(now),
+      deliveredCount: today.length,
+      deliveredCents: today.reduce((s, o) => s + o.totalCents, 0),
+    };
   }
 
   /**
@@ -867,6 +978,45 @@ export class OrderService {
    * 前端就得自己维护一份 status→文案/颜色 的映射 —— 那是把状态机抄了第二遍，
    * 也是 AC-11（颜色由服务端给）明确禁止的。
    */
+  /**
+   * 商户后台订单管理列表（W-07）。
+   *
+   * 与 `deliveryList` 的分工：
+   *   · deliveryList —— 手机端配送动线，只取"要动手的"，按楼栋→楼层→房间号排，不分页；
+   *   · 本方法       —— 网页端查账，全状态、可检索、真分页，按时间倒序（查账看的是"最近发生了什么"）。
+   * 界面上它们是两个页面，不该为了省一个方法让其中一个别扭。
+   *
+   * `counts` 一次给全：筛选标签上的数字必须和列表同源，分两次请求会短暂不一致。
+   */
+  async merchantOrderList(
+    tenantCode: string,
+    opts: { statuses?: OrderStatus[]; keyword?: string; limit?: number; offset?: number } = {},
+  ): Promise<{ items: MerchantOrderView[]; total: number; counts: Record<string, number> }> {
+    const repo = this.repos.tenant(tenantCode);
+    const limit = Math.min(Math.max(1, opts.limit ?? 20), 200);
+    const { items, total } = await repo.listOrders({
+      statuses: opts.statuses?.length ? opts.statuses : undefined,
+      keyword: opts.keyword,
+      limit,
+      offset: opts.offset,
+    });
+
+    const buildings = await repo.listBuildings(true);
+    const nameOf = new Map(buildings.map((b) => [b.id, b.name]));
+
+    // 计数走的是"不带状态筛选"的全量 —— 否则标签上的数字会跟着当前筛选变小，
+    // 用户就再也看不出"还有几单待接单"
+    const all = await repo.listOrders({ limit: 200, offset: 0 });
+    const counts: Record<string, number> = {};
+    for (const o of all.items) counts[o.status] = (counts[o.status] ?? 0) + 1;
+
+    return {
+      items: items.map((o) => toMerchantView(o, nameOf.get(o.buildingId) ?? `楼栋 ${o.buildingId}`)),
+      total,
+      counts,
+    };
+  }
+
   async merchantOrderDetail(tenantCode: string, orderNo: string): Promise<MerchantOrderView> {
     const repo = this.repos.tenant(tenantCode);
     const order = await repo.findOrder(orderNo);

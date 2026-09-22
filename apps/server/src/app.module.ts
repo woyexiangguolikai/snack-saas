@@ -3,13 +3,16 @@ import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CoreModule } from './core/core.module';
 import { HealthController } from './core/health.controller';
+import { JobsModule } from './jobs/jobs.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { NoticeModule } from './notice/notice.module';
 import { OrderModule } from './order/order.module';
 import { PlatformController } from './platform/platform.controller';
+import { PlatformModule } from './platform/platform.module';
 import { TenantResolveController } from './platform/tenant.controller';
 import { BuildingController } from './tenant/building.controller';
 import { ConfigController, TimeWindowController } from './tenant/config.controller';
+import { MerchantSessionController } from './tenant/merchant-session.controller';
 import { TenantRouterMiddleware } from './tenant/tenant-router.middleware';
 
 /**
@@ -20,10 +23,12 @@ import { TenantRouterMiddleware } from './tenant/tenant-router.middleware';
  *   CatalogModule  —— 商品 / 库存
  *   OrderModule    —— 订单状态机（唯一会同时动库存和钱的地方）
  *   NoticeModule   —— 站内消息兜底 + 订阅消息授权凭证（依赖方：OrderModule）
+ *   PlatformModule —— 平台侧独有：上线流水线 / 灰度推送 / 密钥 / 告警 / 工单
+ *   JobsModule     —— **定时任务调度**（S7）：跨账本域与订单域，所以站在两者之上
  * 这样"钱被谁动过"在依赖图上是一眼可见的。
  */
 @Module({
-  imports: [CoreModule, AuthModule, LedgerModule, CatalogModule, NoticeModule, OrderModule],
+  imports: [CoreModule, AuthModule, LedgerModule, CatalogModule, NoticeModule, OrderModule, PlatformModule, JobsModule],
   controllers: [
     HealthController,
     TenantResolveController,
@@ -31,6 +36,7 @@ import { TenantRouterMiddleware } from './tenant/tenant-router.middleware';
     BuildingController,
     ConfigController,
     TimeWindowController,
+    MerchantSessionController,
   ],
 })
 export class AppModule implements NestModule {

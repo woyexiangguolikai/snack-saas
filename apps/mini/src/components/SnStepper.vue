@@ -36,8 +36,8 @@ const emit = defineEmits<{
   (e: 'remove'): void;
   /** 库存场景：减到 0 → 已置为售罄 */
   (e: 'zero'): void;
-  /** 触达上限被拒 */
-  (e: 'overflow'): void;
+  /** 触达上限被拒 —— 带上上限，调用方才能说清"最多能买几件"（§5.4-3：不能只说"库存不足"） */
+  (e: 'overflow', max: number): void;
   (e: 'change', v: number): void;
 }>();
 
@@ -58,7 +58,7 @@ function commit(v: number) {
 function onInc() {
   if (locked.value) return;
   if (!canInc.value) {
-    emit('overflow');
+    emit('overflow', props.max);
     return;
   }
   commit(props.modelValue + 1);

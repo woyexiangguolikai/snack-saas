@@ -12,6 +12,7 @@ import { useAsync } from '../../composables/useAsync';
 import { api, type Address } from '../../utils/api';
 import { toast, confirm, switchTab, TAB } from '../../utils/ui';
 import { setPickedAddress } from '../../utils/pick';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-11a 地址簿。
@@ -105,6 +106,8 @@ function onBack(): void {
 <template>
   <view class="al" :style="theme.themeStyle">
     <SnNavBar :title="selectMode ? '选择收货地址' : '地址簿'" @back="onBack" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="al__scroll">
       <view v-if="addrs.phase.value === 'loading'" class="al__skel">
@@ -117,7 +120,7 @@ function onBack(): void {
         tone="danger"
         glyph="!"
         title="地址没加载出来"
-        :desc="addrs.error.value?.message ?? '网络不太顺，请稍后重试'"
+        :desc="addrs.error.value?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次'"
         primary-text="重新加载"
         @primary="addrs.reload()"
       />

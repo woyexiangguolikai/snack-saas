@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import SnSheet from './SnSheet.vue';
 import SnTag from './SnTag.vue';
 import { formatAmount } from '../utils/amount';
+import { callShop } from '../utils/contact';
 import type { ResolvedBuilding } from '../stores/session';
 
 /**
@@ -47,9 +49,23 @@ function pick(b: ResolvedBuilding) {
   emit('update:modelValue', false);
 }
 
+/**
+ * 未覆盖楼栋的出路（空态 ⑥）。
+ *
+ * 三要素（§4.1 ⑥）：**说清我们覆盖哪几栋**（让学生自己确认确实没他）+
+ * 给出预期（正在陆续开通）+ 提供联系入口。只写"暂无可用楼栋"是最差的一种 ——
+ * 学生看完不知道是店没开还是自己选错了。
+ */
+const coveredText = computed(() => {
+  const names = props.buildings.map((b) => b.buildingName);
+  if (!names.length) return '本店暂未开通配送楼栋';
+  if (names.length <= 4) return `我们目前只送 ${names.join('、')}`;
+  return `我们目前只送 ${names.slice(0, 3).join('、')} 等 ${names.length} 栋`;
+});
+
 function contactShop() {
   emit('update:modelValue', false);
-  uni.showToast({ title: '请联系店家确认配送范围', icon: 'none' });
+  callShop();
 }
 </script>
 
@@ -87,7 +103,7 @@ function contactShop() {
 
     <template #footer>
       <view class="bs__foot">
-        <text class="bs__foottext">没有找到你的楼栋？</text>
+        <text class="bs__foottext">没有找到你的楼栋？{{ coveredText }}，其他楼栋正在陆续开通。</text>
         <text class="bs__footlink" @click="contactShop">联系店家确认配送范围</text>
       </view>
     </template>

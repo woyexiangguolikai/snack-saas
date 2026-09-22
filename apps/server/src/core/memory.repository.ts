@@ -2,24 +2,33 @@ import { ERR, BizError } from './errors';
 import { PIPELINE_STAGES } from './pipeline-stages';
 import type {
   AddressRecord,
+  AlertRecord,
+  AppVersionRecord,
+  AuditRecord,
   BuildingRecord,
   BuildingTemplateRecord,
   BulkBuildingConfig,
   CategoryRecord,
   CreateTenantInput,
+  JobKind,
+  JobRunRecord,
   OrderItemRecord,
   OrderRecord,
   OrderStatus,
   OrderSummaryRecord,
+  OrphanPayRecord,
   NoticeRecord,
   NoticeType,
   PipelineStageRecord,
   PlatformRepo,
   ProductRecord,
   ProductStockRecord,
+  PushBatchRecord,
   PushGrantRecord,
+  PushTargetRecord,
   RepoFactory,
   SchoolRecord,
+  SecretKind,
   SettlementRunRecord,
   StatementRecord,
   StockLogRecord,
@@ -27,6 +36,11 @@ import type {
   SubscriptionRecord,
   TenantRepo,
   TenantRecord,
+  TenantSecretRecord,
+  TenantStatus,
+  TicketCategory,
+  TicketRecord,
+  TicketStatus,
   UserRecord,
   WalletRecord,
   WalletTxnRecord,
@@ -39,7 +53,7 @@ import type { ShopConfigRecord } from './types';
  * 行为必须与 PrismaRepo 完全一致；任何行为差异都算 bug。
  * ==========================================================================*/
 
-export function defaultShopConfig(shopName: string): ShopConfigRecord {
+export function defaultShopConfig(shopName: string, contactPhone: string | null = null): ShopConfigRecord {
   return {
     shopName,
     logoUrl: null,
@@ -54,7 +68,21 @@ export function defaultShopConfig(shopName: string): ShopConfigRecord {
     accessibleFrom: '06:30', // 门禁默认窗口（§4.13.2）
     accessibleTo: '22:30',
     cutoffLeadMinutes: 30,   // 预留配送在途时间 → 截单 22:00
-    contactPhone: null,
+    /**
+     * 对外客服电话。建库时用**入驻时登记的联系电话**预填。
+     *
+     * 为什么不能留 null 等商户自己来填：
+     *   新店刚上线时，学生端那几个"只有店家能回答"的空态（本栋没上架、
+     *   楼栋不在覆盖范围）就已经存在了。电话为 null 时那些空态只能退化
+     *   成"复制店名"，而学生第一次进店恰恰最可能撞上这些空态。
+     *   用入驻电话预填，等于把"联系店家"这条出路默认打开；
+     *   商户随时可以在设置页改掉或清空 —— 清空后我们**如实回到 null**，
+     *   不做"偷偷用入驻电话兜底"这种事，否则商户永远关不掉对外电话。
+     *
+     * 单一真相源：学生看到的电话 = 商户库里的这一格。
+     * 平台库里那份 `tenant.contactPhone` 是平台侧联络人电话，两者互不覆盖。
+     */
+    contactPhone,
     shopOpen: true,
   };
 }
@@ -174,7 +202,8 @@ class MemoryPlatformRepo implements PlatformRepo {
 
     // 建库 → 初始化租户库（默认楼栋 + 学校模板带出的楼栋 + 默认分类）
     const bucket = this.s.bucket(tenant.tenantCode);
-    bucket.shopConfig = defaultShopConfig(input.shopName);
+    // 入驻登记的联系电话同时作为**对外客服电话**的初值（见 defaultShopConfig 注释）
+    bucket.shopConfig = defaultShopConfig(input.shopName, input.contactPhone ?? null);
     bucket.categories = seedCategories();
     let sort = 0;
     // 单楼栋商户自动降级依赖「默认楼栋」始终存在（§4.9）
@@ -228,6 +257,8 @@ class MemoryPlatformRepo implements PlatformRepo {
         rejectReason: null,
         contactedAt: null,
         remark: null,
+        rejectedAt: null,
+        resubmittedAt: null,
       });
     }
     return tenant;
@@ -312,6 +343,26 @@ class MemoryPlatformRepo implements PlatformRepo {
     return this.s.pipeline
       .filter((p) => p.tenantCode === tenantCode)
       .sort((a, b) => a.stageNo - b.stageNo);
+  }
+
+  async issueWebLoginCode(tenantCode: string, code: string, ttlSeconds: number): Promise<{ expiresAt: string }> {
+    // 同一租户只保留**最新一个**码：连续点两次生成，旧码就该立刻失效 ——
+    // 否则屏幕上同时有两个"看起来都能用"的码，店主自己也不知道该敲哪个
+    this.s.loginCodes = this.s.loginCodes.filter((c) => c.tenantCode !== tenantCode);
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+    this.s.loginCodes.push({ tenantCode, code, expiresAt, usedAt: null });
+    return { expiresAt };
+  }
+
+  async consumeWebLoginCode(tenantCode: string, code: string): Promise<boolean> {
+    const now = Date.now();
+    const hit = this.s.loginCodes.find(
+      (c) => c.tenantCode === tenantCode && c.code === code && c.usedAt === null,
+    );
+    if (!hit) return false;
+    if (new Date(hit.expiresAt).getTime() < now) return false;
+    hit.usedAt = new Date().toISOString();
+    return true;
   }
 
   async appendAudit(entry: { tenantCode?: string | null; actor: string; action: string; target?: string | null; detail?: string | null }): Promise<void> {
@@ -520,6 +571,349 @@ class MemoryPlatformRepo implements PlatformRepo {
     return [...this.s.statements.values()]
       .filter((s) => s.tenantCode === tenantCode)
       .sort((a, b) => a.period.localeCompare(b.period));
+  }
+
+  /* ========================================================================
+   * 上线流水线（S6）
+   * ======================================================================*/
+
+  async updatePipelineStage(
+    tenantCode: string,
+    stageNo: number,
+    patch: Partial<PipelineStageRecord>,
+  ): Promise<PipelineStageRecord> {
+    const hit = this.s.pipeline.find((p) => p.tenantCode === tenantCode && p.stageNo === stageNo);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `流水线阶段不存在：${tenantCode} #${stageNo}`);
+    Object.assign(hit, patch);
+    return hit;
+  }
+
+  async listAllPipeline(): Promise<PipelineStageRecord[]> {
+    return [...this.s.pipeline].sort(
+      (a, b) => a.tenantCode.localeCompare(b.tenantCode) || a.stageNo - b.stageNo,
+    );
+  }
+
+  async setTenantStatus(tenantCode: string, status: TenantStatus): Promise<TenantRecord> {
+    const t = this.s.tenants.get(tenantCode);
+    if (!t) throw BizError.notFound(ERR.TENANT_NOT_FOUND, `租户不存在：${tenantCode}`);
+    t.status = status;
+    return t;
+  }
+
+  /* ========================================================================
+   * 版本与推送（S6）
+   * ======================================================================*/
+
+  async createAppVersion(input: { version: string; note?: string | null }): Promise<AppVersionRecord> {
+    if (this.s.appVersions.some((v) => v.version === input.version)) {
+      throw new BizError(ERR.VALIDATION_FAILED, `版本号已存在：${input.version}`);
+    }
+    const rec: AppVersionRecord = {
+      id: this.s.seq.version++,
+      version: input.version,
+      note: input.note ?? null,
+      status: 'draft',
+      pushedCount: 0,
+      publishedCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    this.s.appVersions.push(rec);
+    return rec;
+  }
+
+  async listAppVersions(): Promise<AppVersionRecord[]> {
+    // 新的在前 —— 看板默认就是"最近发了什么"
+    return [...this.s.appVersions].sort((a, b) => b.id - a.id);
+  }
+
+  async findAppVersion(id: number): Promise<AppVersionRecord | null> {
+    return this.s.appVersions.find((v) => v.id === id) ?? null;
+  }
+
+  async updateAppVersion(id: number, patch: Partial<AppVersionRecord>): Promise<AppVersionRecord> {
+    const hit = this.s.appVersions.find((v) => v.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `版本不存在：${id}`);
+    Object.assign(hit, patch, { id });
+    return hit;
+  }
+
+  async createPushBatch(
+    input: Omit<PushBatchRecord, 'id' | 'createdAt' | 'finishedAt'> & { finishedAt?: string | null },
+  ): Promise<PushBatchRecord> {
+    const rec: PushBatchRecord = {
+      ...input,
+      id: this.s.seq.batch++,
+      createdAt: new Date().toISOString(),
+      finishedAt: input.finishedAt ?? null,
+    };
+    this.s.pushBatches.push(rec);
+    return rec;
+  }
+
+  async updatePushBatch(id: number, patch: Partial<PushBatchRecord>): Promise<PushBatchRecord> {
+    const hit = this.s.pushBatches.find((b) => b.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `推送批次不存在：${id}`);
+    Object.assign(hit, patch, { id });
+    return hit;
+  }
+
+  async listPushBatches(limit = 50): Promise<PushBatchRecord[]> {
+    return [...this.s.pushBatches].sort((a, b) => b.id - a.id).slice(0, limit);
+  }
+
+  async addPushTargets(inputs: Array<Omit<PushTargetRecord, 'id'>>): Promise<PushTargetRecord[]> {
+    const out = inputs.map((i) => ({ ...i, id: this.s.seq.target++ }));
+    this.s.pushTargets.push(...out);
+    return out;
+  }
+
+  async listPushTargets(opts: { batchId?: number; tenantCode?: string } = {}): Promise<PushTargetRecord[]> {
+    return this.s.pushTargets.filter(
+      (t) =>
+        (opts.batchId === undefined || t.batchId === opts.batchId) &&
+        (opts.tenantCode === undefined || t.tenantCode === opts.tenantCode),
+    );
+  }
+
+  async updatePushTarget(id: number, patch: Partial<PushTargetRecord>): Promise<PushTargetRecord> {
+    const hit = this.s.pushTargets.find((t) => t.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `推送目标不存在：${id}`);
+    Object.assign(hit, patch, { id });
+    return hit;
+  }
+
+  async currentAppOf(tenantCode: string): Promise<PushTargetRecord | null> {
+    // 取**最近一次成功**推送 —— 失败的推送不能算"这家在跑哪个版本"
+    const hits = this.s.pushTargets.filter((t) => t.tenantCode === tenantCode && t.ok);
+    if (!hits.length) return null;
+    return hits.reduce((a, b) => (b.id > a.id ? b : a));
+  }
+
+  /* ========================================================================
+   * 密钥（S6）
+   * ======================================================================*/
+
+  async upsertSecret(input: {
+    tenantCode: string;
+    kind: SecretKind;
+    cipher: string;
+    masked: string;
+    remark?: string | null;
+  }): Promise<TenantSecretRecord> {
+    const exist = this.s.secrets.find((x) => x.tenantCode === input.tenantCode && x.kind === input.kind);
+    if (exist) {
+      // 替换语义：旧密文**直接覆盖**，不留副本 —— 留副本就等于"可查看"绕道可回到
+      Object.assign(exist, {
+        cipher: input.cipher,
+        masked: input.masked,
+        remark: input.remark ?? null,
+        status: 'active' as const,
+        invalidAt: null,
+        invalidReason: null,
+        updatedAt: new Date().toISOString(),
+      });
+      return exist;
+    }
+    const rec: TenantSecretRecord = {
+      id: this.s.seq.secret++,
+      tenantCode: input.tenantCode,
+      kind: input.kind,
+      cipher: input.cipher,
+      masked: input.masked,
+      status: 'active',
+      remark: input.remark ?? null,
+      updatedAt: new Date().toISOString(),
+      invalidAt: null,
+      invalidReason: null,
+    };
+    this.s.secrets.push(rec);
+    return rec;
+  }
+
+  async listSecrets(tenantCode?: string): Promise<TenantSecretRecord[]> {
+    return this.s.secrets.filter((x) => tenantCode === undefined || x.tenantCode === tenantCode);
+  }
+
+  async markSecretInvalid(tenantCode: string, kind: SecretKind, reason: string): Promise<TenantSecretRecord | null> {
+    const hit = this.s.secrets.find((x) => x.tenantCode === tenantCode && x.kind === kind);
+    if (!hit) return null;
+    hit.status = 'invalid';
+    hit.invalidAt = new Date().toISOString();
+    hit.invalidReason = reason;
+    return hit;
+  }
+
+  /* ========================================================================
+   * 告警（S6）
+   * ======================================================================*/
+
+  async raiseAlert(input: Omit<AlertRecord, 'id' | 'createdAt' | 'ackAt' | 'ackBy'>): Promise<{ alert: AlertRecord; created: boolean }> {
+    const exist = this.s.alerts.find((a) => a.dedupeKey === input.dedupeKey);
+    if (exist) return { alert: exist, created: false };
+    const rec: AlertRecord = { ...input, id: this.s.seq.alert++, createdAt: new Date().toISOString(), ackAt: null, ackBy: null };
+    this.s.alerts.push(rec);
+    return { alert: rec, created: true };
+  }
+
+  async listAlerts(opts: { open?: boolean; tenantCode?: string; limit?: number } = {}): Promise<AlertRecord[]> {
+    return this.s.alerts
+      .filter(
+        (a) =>
+          // open === true 才过滤；不传就是"全部"（含已确认）。语义只有一种读法
+          (opts.open === true ? a.ackAt === null : true) &&
+          (opts.tenantCode === undefined || a.tenantCode === opts.tenantCode),
+      )
+      .sort((a, b) => b.id - a.id)
+      .slice(0, opts.limit ?? 200);
+  }
+
+  async ackAlert(id: number, by: string): Promise<AlertRecord> {
+    const hit = this.s.alerts.find((a) => a.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `告警不存在：${id}`);
+    if (hit.ackAt === null) {
+      hit.ackAt = new Date().toISOString();
+      hit.ackBy = by;
+    }
+    return hit;
+  }
+
+  /* ========================================================================
+   * 工单（S6）
+   * ======================================================================*/
+
+  async createTicket(input: { tenantCode?: string | null; title: string; category: TicketCategory; createdBy: string }): Promise<TicketRecord> {
+    const rec: TicketRecord = {
+      id: this.s.seq.ticket++,
+      tenantCode: input.tenantCode ?? null,
+      title: input.title,
+      category: input.category,
+      // 分类决定接单人：技术归我方，经营归合伙人（§6.3 S30）
+      assignee: input.category === 'operation' ? 'partner' : 'platform',
+      status: 'open',
+      createdBy: input.createdBy,
+      createdAt: new Date().toISOString(),
+      closedAt: null,
+      logs: [],
+    };
+    this.s.tickets.push(rec);
+    return rec;
+  }
+
+  async listTickets(opts: { status?: TicketStatus; tenantCode?: string } = {}): Promise<TicketRecord[]> {
+    return this.s.tickets
+      .filter(
+        (t) =>
+          (opts.status === undefined || t.status === opts.status) &&
+          (opts.tenantCode === undefined || t.tenantCode === opts.tenantCode),
+      )
+      .sort((a, b) => b.id - a.id);
+  }
+
+  async findTicket(id: number): Promise<TicketRecord | null> {
+    return this.s.tickets.find((t) => t.id === id) ?? null;
+  }
+
+  async appendTicketLog(id: number, log: { by: string; text: string }, patch?: Partial<Pick<TicketRecord, 'status' | 'assignee'>>): Promise<TicketRecord> {
+    const hit = this.s.tickets.find((t) => t.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `工单不存在：${id}`);
+    hit.logs.push({ ...log, at: new Date().toISOString() });
+    if (patch?.status) {
+      hit.status = patch.status;
+      if (patch.status === 'closed') hit.closedAt = new Date().toISOString();
+    }
+    if (patch?.assignee) hit.assignee = patch.assignee;
+    return hit;
+  }
+
+  /* ========================================================================
+   * 审计（S6）
+   * ======================================================================*/
+
+  async listAudits(opts: { tenantCode?: string; limit?: number } = {}): Promise<AuditRecord[]> {
+    return this.s.audits
+      .filter((a) => opts.tenantCode === undefined || a.tenantCode === opts.tenantCode)
+      .map((a, i) => ({ id: i + 1, tenantCode: a.tenantCode, actor: a.actor, action: a.action, target: a.target ?? null, detail: a.detail ?? null, at: a.at }))
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, opts.limit ?? 100);
+  }
+
+  /* ========================================================================
+   * 边界兜底（S7）：孤儿支付 + 任务运行记录
+   * ======================================================================*/
+
+  async appendOrphanPay(input: {
+    tenantCode: string;
+    orderNo: string;
+    txnId: string;
+    amountCents: number;
+    paidAt?: string | null;
+  }): Promise<{ record: OrphanPayRecord; created: boolean }> {
+    // 幂等键 = 租户 + 支付流水号：微信回调会重放，同一笔钱记三遍就变成"三笔要查的账"
+    const exist = this.s.orphanPays.find((x) => x.tenantCode === input.tenantCode && x.txnId === input.txnId);
+    if (exist) return { record: exist, created: false };
+    const rec: OrphanPayRecord = {
+      id: this.s.seq.orphanPay++,
+      tenantCode: input.tenantCode,
+      orderNo: input.orderNo,
+      txnId: input.txnId,
+      amountCents: input.amountCents,
+      paidAt: input.paidAt ?? null,
+      receivedAt: new Date().toISOString(),
+      status: 'open',
+      resolvedAt: null,
+      resolvedBy: null,
+      resolveNote: null,
+    };
+    this.s.orphanPays.push(rec);
+    return { record: rec, created: true };
+  }
+
+  async listOrphanPays(opts: { tenantCode?: string; status?: OrphanPayRecord['status']; limit?: number } = {}): Promise<OrphanPayRecord[]> {
+    return this.s.orphanPays
+      .filter(
+        (x) =>
+          (opts.tenantCode === undefined || x.tenantCode === opts.tenantCode) &&
+          (opts.status === undefined || x.status === opts.status),
+      )
+      .sort((a, b) => b.id - a.id)
+      .slice(0, opts.limit ?? 200);
+  }
+
+  async resolveOrphanPay(id: number, by: string, note: string): Promise<OrphanPayRecord> {
+    const hit = this.s.orphanPays.find((x) => x.id === id);
+    if (!hit) throw BizError.notFound(ERR.VALIDATION_FAILED, `孤儿支付记录不存在：${id}`);
+    if (!note?.trim()) throw new BizError(ERR.VALIDATION_FAILED, '结清孤儿支付必须写明处理说明');
+    hit.status = 'resolved';
+    hit.resolvedAt = new Date().toISOString();
+    hit.resolvedBy = by;
+    hit.resolveNote = note.trim();
+    return hit;
+  }
+
+  async appendJobRun(input: Omit<JobRunRecord, 'id'>): Promise<JobRunRecord> {
+    const rec: JobRunRecord = { ...input, id: this.s.seq.jobRun++ };
+    this.s.jobRuns.push(rec);
+    // 只保留最近 500 条：任务看板看的是"最近怎么样"，不是审计流水
+    if (this.s.jobRuns.length > 500) this.s.jobRuns.splice(0, this.s.jobRuns.length - 500);
+    return rec;
+  }
+
+  async listJobRuns(opts: { kind?: JobKind; limit?: number } = {}): Promise<JobRunRecord[]> {
+    return this.s.jobRuns
+      .filter((x) => opts.kind === undefined || x.kind === opts.kind)
+      .sort((a, b) => b.id - a.id)
+      .slice(0, opts.limit ?? 100);
+  }
+
+  /* ========================================================================
+   * 学校与楼栋模板（S6）
+   * ======================================================================*/
+
+  async deleteSchool(id: number): Promise<boolean> {
+    const ok = this.s.schools.delete(id);
+    for (const [tid, t] of [...this.s.templates]) if (t.schoolId === id) this.s.templates.delete(tid);
+    return ok;
   }
 
   async reset(): Promise<void> {
@@ -1158,6 +1552,25 @@ class MemoryTenantRepo implements TenantRepo {
       .slice(0, opts.limit ?? 50);
   }
 
+  async listOrders(
+    opts: { statuses?: OrderStatus[]; keyword?: string; limit?: number; offset?: number } = {},
+  ): Promise<{ items: OrderRecord[]; total: number }> {
+    const kw = opts.keyword?.trim() ?? '';
+    const matched = this.bucket()
+      .orders.filter((o) => {
+        if (opts.statuses?.length && !opts.statuses.includes(o.status)) return false;
+        // 商户检索只认「单号 / 房间号」两个口径：
+        // 订单管理页的检索框是"我刚接到一个电话说 305 的单有问题"，不是全文搜索
+        if (!kw) return true;
+        return o.orderNo.includes(kw) || o.room.includes(kw);
+      })
+      .sort((a, b) => b.id - a.id);
+
+    const offset = Math.max(0, opts.offset ?? 0);
+    const limit = Math.min(Math.max(1, opts.limit ?? 20), 200);
+    return { items: matched.slice(offset, offset + limit), total: matched.length };
+  }
+
   async listOrdersByStatus(statuses: OrderStatus[], opts: { limit?: number } = {}): Promise<OrderRecord[]> {
     return this.bucket()
       .orders.filter((o) => statuses.includes(o.status))
@@ -1317,7 +1730,31 @@ export class MemoryStore {
   readonly statements = new Map<string, StatementRecord>();
   pipeline: PipelineStageRecord[] = [];
   audits: Array<{ tenantCode: string | null; actor: string; action: string; target?: string | null; detail?: string | null; at: string }> = [];
-  readonly seq = { tenant: 1, school: 1, template: 1, order: 1, run: 1, txn: 1 };
+  /** 网页端登录码：一次性，过期即失效；只存哈希之外的元数据，用完即删 */
+  loginCodes: Array<{ tenantCode: string; code: string; expiresAt: string; usedAt: string | null }> = [];
+
+  /* ------------------------------------------------- 平台侧运行时（S6） */
+
+  readonly appVersions: AppVersionRecord[] = [];
+  readonly pushBatches: PushBatchRecord[] = [];
+  readonly pushTargets: PushTargetRecord[] = [];
+  readonly secrets: TenantSecretRecord[] = [];
+  readonly alerts: AlertRecord[] = [];
+  readonly tickets: TicketRecord[] = [];
+  readonly audits2: AuditRecord[] = [];
+
+  /* ------------------------------------------------- 边界兜底（S7） */
+
+  /** 孤儿支付：收到钱但没有订单。只记录 + 告警，**绝不自动编单** */
+  readonly orphanPays: OrphanPayRecord[] = [];
+  /** 五类定时任务的运行记录 —— 失败的任务也必须留下痕迹 */
+  readonly jobRuns: JobRunRecord[] = [];
+
+  readonly seq = {
+    tenant: 1, school: 1, template: 1, order: 1, run: 1, txn: 1,
+    version: 1, batch: 1, target: 1, secret: 1, alert: 1, ticket: 1, audit: 1,
+    orphanPay: 1, jobRun: 1,
+  };
   private readonly buckets = new Map<string, TenantBucket>();
 
   constructor() {
@@ -1362,10 +1799,29 @@ export class MemoryStore {
     this.statements.clear();
     this.pipeline = [];
     this.audits = [];
+    this.loginCodes = [];
+    this.appVersions.length = 0;
+    this.pushBatches.length = 0;
+    this.pushTargets.length = 0;
+    this.secrets.length = 0;
+    this.alerts.length = 0;
+    this.tickets.length = 0;
+    this.audits2.length = 0;
+    this.orphanPays.length = 0;
+    this.jobRuns.length = 0;
     this.seq.tenant = 1;
     this.seq.order = 1;
     this.seq.run = 1;
     this.seq.txn = 1;
+    this.seq.version = 1;
+    this.seq.batch = 1;
+    this.seq.target = 1;
+    this.seq.secret = 1;
+    this.seq.alert = 1;
+    this.seq.ticket = 1;
+    this.seq.audit = 1;
+    this.seq.orphanPay = 1;
+    this.seq.jobRun = 1;
   }
 }
 

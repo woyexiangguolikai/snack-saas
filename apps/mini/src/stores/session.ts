@@ -56,7 +56,20 @@ interface Persisted {
    * 楼栋记忆同理（学生几乎总在同一栋楼下单）。
    */
   shopName?: string;
+  /** 店家的对外客服电话。落盘的理由同店名：离线进店时"联系店家"仍然能用（R-1） */
+  contactPhone?: string;
   lastBuildingId?: number | null;
+  /**
+   * 楼栋清单也落盘（R-1）。
+   *
+   * 为什么店名都缓存了、楼栋不缓存是说不过去的：
+   * 离线进店时没有楼栋清单，首页会连"我在给哪一栋看"都答不出来 ——
+   * 楼栋牌会退回"请先选择"，而这恰恰是 R-2 要避免的形态（用户以为自己没选）。
+   * 数据量很小（每栋十几个字段），换来的是一条完整的离线店铺外壳。
+   */
+  buildings?: ResolvedBuilding[];
+  singleBuildingMode?: boolean;
+  shopOpen?: boolean;
 }
 
 const STORAGE_KEY = 'snack.session';
@@ -75,6 +88,15 @@ export const useSessionStore = defineStore('session', () => {
   const shopName = ref('');
   const logoUrl = ref('');
   const announcement = ref<string | null>(null);
+  /**
+   * 店家对外客服电话（可空）。
+   *
+   * 学生遇到"本栋没上架""楼栋不在覆盖范围"这类**只有店家能回答**的问题时，
+   * 空态里必须有一个能点的东西。没有它就只能写"请联系店家"——
+   * 而"请你联系一个人但我不告诉你怎么联系"等于没给下一步。
+   * 与房间号 / 顾客手机号的区别：这是店家主动填的对外电话。
+   */
+  const contactPhone = ref("");
   const buildings = ref<ResolvedBuilding[]>([]);
   const singleBuildingMode = ref(false);
   const shopOpen = ref(true);
@@ -86,6 +108,14 @@ export const useSessionStore = defineStore('session', () => {
   const notFound = ref(false);
   const suspended = ref(false);
   const lastError = ref<{ code: string; message: string } | null>(null);
+  /**
+   * **离线进店中**（R-1）。
+   *
+   * true = 当前渲染的是本地缓存，不是刚拿到的服务端数据。
+   * 页面必须据此把话说明白（顶部黄条），否则学生会以为什么都正常 ——
+   * 加购能成功（本地操作），下单一定失败，他会在支付那一步彻底懵。
+   */
+  const offline = ref(false);
 
   /**
    * 服务端时间 − 本地时间（毫秒）。
@@ -131,7 +161,11 @@ export const useSessionStore = defineStore('session', () => {
       tenantCode: tenantCode.value, token: token.value,
       expiresAt: expiresAt.value, user: user.value,
       shopName: shopName.value,
+      contactPhone: contactPhone.value,
       lastBuildingId: lastBuildingId.value,
+      buildings: buildings.value,
+      singleBuildingMode: singleBuildingMode.value,
+      shopOpen: shopOpen.value,
     } satisfies Persisted);
   }
 
@@ -147,7 +181,12 @@ export const useSessionStore = defineStore('session', () => {
       user.value = raw.user ?? null;
       // 首屏即时渲染用：拿到旧值先显示，后台 resolve 回来再覆盖
       shopName.value = raw.shopName ?? '';
+      contactPhone.value = raw.contactPhone ?? '';
       lastBuildingId.value = raw.lastBuildingId ?? readLastBuildingId();
+      // 楼栋清单：离线进店要靠它回答"我在哪一栋、能否下单"（R-1）
+      buildings.value = Array.isArray(raw.buildings) ? raw.buildings : [];
+      singleBuildingMode.value = !!raw.singleBuildingMode;
+      shopOpen.value = raw.shopOpen !== false;
       return true;
     } catch {
       return false;
@@ -160,6 +199,15 @@ export const useSessionStore = defineStore('session', () => {
     expiresAt.value = '';
     user.value = null;
     resolved.value = false;
+    offline.value = false;
+    // 店铺级缓存也一起清 —— 只清令牌的后果是：换了一家店之后，
+    // 首屏会用上一家的店名与楼栋渲染一帧，再跳成新的（比空更糟）。
+    shopName.value = '';
+    logoUrl.value = '';
+    announcement.value = null;
+    contactPhone.value = '';
+    buildings.value = [];
+    singleBuildingMode.value = false;
     uni.removeStorageSync(STORAGE_KEY);
   }
 
@@ -173,6 +221,7 @@ export const useSessionStore = defineStore('session', () => {
     try {
       const r = await request<{
         tenantCode: string; shopName: string; logoUrl: string | null; announcement: string | null;
+        contactPhone: string | null;
         themeScale: Record<string, string> | null; shopOpen: boolean;
         buildings: ResolvedBuilding[]; singleBuildingMode: boolean;
         gates: typeof gates.value;
@@ -192,12 +241,14 @@ export const useSessionStore = defineStore('session', () => {
       shopName.value = r.shopName;
       logoUrl.value = r.logoUrl ?? '';
       announcement.value = r.announcement;
+      contactPhone.value = r.contactPhone ?? "";
       buildings.value = r.buildings ?? [];
       singleBuildingMode.value = !!r.singleBuildingMode;
       shopOpen.value = !!r.shopOpen;
       gates.value = r.gates;
       notFound.value = false;
       suspended.value = false;
+      offline.value = false;
       lastError.value = null;
       resolved.value = true;
 
@@ -216,18 +267,50 @@ export const useSessionStore = defineStore('session', () => {
       const err = e instanceof ApiFailure ? e : null;
       const code = err?.code ?? 'NETWORK';
       lastError.value = { code, message: err?.message ?? '店铺信息加载失败' };
-      // 租户未开通是**业务状态**，走专门页面；其它错误保留重试入口
+
+      // 租户未开通 / 已停用是**业务状态**，走专门页面（S-03）—— 这两个清会话是对的：
+      // 这个 AppID 已经不属于这家店了，留着缓存只会让下次启动又进一次错的店。
       notFound.value = code === 'TENANT_NOT_FOUND';
       suspended.value = code === 'TENANT_SUSPENDED';
+      if (notFound.value || suspended.value) {
+        resolved.value = false;
+        clear();
+        return false;
+      }
+
+      /* ---------------------------------------------------------------- R-1
+       * 网络类失败：**绝不销毁本地缓存**。
+       *
+       * 这里原来无条件 clear()，代价比"看不到数据"大得多：
+       *   校园网在楼梯间断一下，学生的登录态、店名、楼栋记忆就全没了；
+       *   回到有网的地方要重新授权、重新选楼栋 —— 而这一切本来只需要重试一次。
+       * 有缓存时按"离线进店"处理：让页面用上次的数据渲染出店铺外壳，
+       * 顶部给一条黄条说清实情，其余交给各页自己的错误态与重试。
+       *
+       * ⚠️ 刻意返回 true（= 已解析）。返回 false 会把首页推进"没连上店铺"的整页错误，
+       *   而那正是 R-1 要避免的形态：学生看到的是"小程序坏了"，而不是"网断了，重试一下"。
+       *   真正的"没网"由 `offline` 标记与网络横幅对外表达。
+       * ---------------------------------------------------------------------- */
+      const cached = !!tenantCode.value && !!token.value;
+      if (cached) {
+        offline.value = true;
+        resolved.value = true;
+        return true;
+      }
       resolved.value = false;
-      clear();
       return false;
     }
   }
 
   /** 首次进入或令牌失效后重新识别租户（不登录，只拿浏览令牌） */
   async function ensureResolved(): Promise<boolean> {
-    if (resolved.value && tenantCode.value && token.value) return true;
+    /**
+     * ⚠️ `!offline.value` 这一条不能省（R-1）：
+     * 离线进店时 resolved / tenantCode / token 全都有值（都用的是缓存），
+     * 少了它，「重试」会直接命中这条短路 —— 点了没有任何反应，
+     * 用户会以为按钮坏了，而这正是他唯一的出路。
+     */
+    if (resolved.value && tenantCode.value && token.value && !offline.value) return true;
     inFlight = inFlight ?? doResolve().finally(() => { inFlight = null; });
     return inFlight;
   }
@@ -283,8 +366,8 @@ export const useSessionStore = defineStore('session', () => {
 
   return {
     tenantCode, token, expiresAt, user,
-    shopName, logoUrl, announcement, buildings, singleBuildingMode, shopOpen, gates,
-    resolved, notFound, suspended, lastError, serverTimeOffsetMs, unread,
+    shopName, logoUrl, announcement, contactPhone, buildings, singleBuildingMode, shopOpen, gates,
+    resolved, notFound, suspended, lastError, offline, serverTimeOffsetMs, unread,
     loggedIn, currentBuilding, lastBuildingId,
     ensureResolved, login, ensureLogin, relogin, logout, clear, restore, now, setUnread, bumpUnread,
     setLastBuilding(id: number) {

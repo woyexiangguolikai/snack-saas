@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { guardThemeColor } from '@snack/tokens';
 import { cutoffOf, narrowBusinessHours, resolveBuildingConfig } from '../core/config-resolver';
@@ -12,6 +13,14 @@ import { evaluateBuildingGate } from '../core/time-window';
 import { CENTS } from '../core/types';
 import type { ResolvedBuildingConfig, TenantRecord, TenantResolveResult, UserRecord } from '../core/types';
 import { WechatService } from '../auth/wechat.service';
+
+/** 网页端登录码的有效期：够从手机走到电脑前输完，不够留到明天 */
+const WEB_LOGIN_CODE_TTL_SECONDS = 300;
+/** 限流窗口与上限：10 分钟内最多 5 次错误尝试 */
+const WEB_LOGIN_ATTEMPT_WINDOW_MS = 10 * 60_000;
+const WEB_LOGIN_ATTEMPT_MAX = 5;
+/** 租户 → 最近的错误尝试时间戳（单机内存；多实例部署需换成 Redis） */
+const webLoginAttempts = new Map<string, number[]>();
 
 /** 学期周期：秋季 9/1–次年 1/31；春季 2/1–7/31。到期日必须避开假期 */
 export function semesterPeriod(at: Date = new Date()): { start: Date; end: Date } {
@@ -209,6 +218,14 @@ export class TenantService {
       shopName: tenant.shopName,
       logoUrl: shop.logoUrl,
       announcement: shop.announcement,
+      /**
+       * 客服电话。**故意下发给学生**（AC-13 的例外，且是唯一例外）：
+       * 它是店家自己填的"对外联系电话"，学生遇到"本栋没上架""楼栋不在覆盖范围"
+       * 这类**只能由店家回答**的问题时，必须有直达的出路。
+       * 没有它，这些空态就只能写"请联系店家"而给不出一个能点的东西 ——
+       * 那等于把问题推给用户。房间号、顾客手机号绝不在此列。
+       */
+      contactPhone: shop.contactPhone,
       themeScale: shop.themeScale,
       shopOpen: shop.shopOpen,
       buildings,
@@ -362,6 +379,56 @@ export class TenantService {
     const created = await repo.createUser({ openid, nickname: nickname ?? null, avatar: null });
     const owner = await repo.updateUser(created.id, { role: 'owner' });
     return { userId: owner.id, nickname: owner.nickname };
+  }
+
+  /**
+   * 网页端登录码：**由已经登录的店主本人在小程序里生成**。
+   *
+   * 为什么不做一个"网页端输密码登录"：那需要先有一套账号体系（注册、找回、改密、
+   * RBAC、审计），而 v1 明确把账号体系放到上线前替换（与 PLATFORM_ADMIN_KEY 一起）。
+   * 在账号体系到位之前，登录码是**更强**而不是更弱的方案 ——
+   * 它把"证明我是店主"这一步交给了已经验证过的微信身份，而不是新造一个密码。
+   */
+  async issueWebLoginCode(tenantCode: string): Promise<{ code: string; expiresAt: string }> {
+    const code = String(randomInt(100000, 1000000));
+    const { expiresAt } = await this.platform.issueWebLoginCode(tenantCode, code, WEB_LOGIN_CODE_TTL_SECONDS);
+    return { code, expiresAt };
+  }
+
+  /** 网页端用码换店主令牌。限流按租户计数，防止在线撞码 */
+  async redeemWebLoginCode(
+    tenantCodeRaw: string,
+    codeRaw: string,
+  ): Promise<{ tenantCode: string; shopName: string; token: string; expiresAt: string; role: 'owner' }> {
+    const tenantCode = String(tenantCodeRaw ?? '').trim();
+    const code = String(codeRaw ?? '').trim();
+    if (!tenantCode) throw new BizError(ERR.VALIDATION_FAILED, '缺少租户编号');
+    if (!/^\d{6}$/.test(code)) throw new BizError(ERR.VALIDATION_FAILED, '登录码是 6 位数字');
+
+    // 限流：6 位码的空间只有 100 万，**不限流就等于允许在线撞码**。
+    // 这是内存计数 —— 多实例部署时每个实例各计一份，等于放宽 N 倍，
+    // 届时应换成 Redis 计数（与 S6 的推送/任务队列一起做）。
+    const attempts = webLoginAttempts.get(tenantCode) ?? [];
+    const recent = attempts.filter((t) => t > Date.now() - WEB_LOGIN_ATTEMPT_WINDOW_MS);
+    if (recent.length >= WEB_LOGIN_ATTEMPT_MAX) {
+      throw BizError.forbidden(ERR.VALIDATION_FAILED, '尝试次数过多，请重新生成登录码');
+    }
+
+    const tenant = await this.platform.findTenantByCode(tenantCode);
+    if (!tenant) throw BizError.notFound(ERR.TENANT_NOT_FOUND, '店铺不存在');
+    if (tenant.status === 'suspended') throw BizError.forbidden(ERR.TENANT_SUSPENDED, '本店暂停服务');
+
+    const ok = await this.platform.consumeWebLoginCode(tenantCode, code);
+    if (!ok) {
+      recent.push(Date.now());
+      webLoginAttempts.set(tenantCode, recent);
+      // 不区分"码不存在 / 已过期 / 已用过" —— 区分了就等于帮撞码的人缩小范围
+      throw BizError.forbidden(ERR.LOGIN_REQUIRED, '登录码不正确或已失效，请重新生成');
+    }
+    webLoginAttempts.delete(tenantCode);
+
+    const { token, expiresAt } = issueToken({ tenantCode, role: 'owner' }, env.jwtSecret, 24 * 3600);
+    return { tenantCode, shopName: tenant.shopName, token, expiresAt, role: 'owner' };
   }
 
   /** 一键配置全部楼栋：一条命令覆盖所有启用楼栋（§4.3） */

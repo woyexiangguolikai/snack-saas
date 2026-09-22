@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>校园零食多租户小程序 · 加载 · 过渡 · 状态全集 v3.0</title>
+<style>
+
+/* ============================================================
+   01 · Design Token —— 这一段可直接复制进 app.wxss
+   设计基准 375pt；小程序 1px = 2rpx
+   ============================================================ */
+:root{
+  /* 品牌色阶 —— 唯一可被租户主题色整体替换的一组变量 */
+  --brand-50:#FFF6F0;--brand-100:#FFE8D9;--brand-200:#FFCFB0;--brand-300:#FFAE7E;
+  --brand-400:#FF8B4D;--brand-500:#F26B21;--brand-600:#D8551A;--brand-700:#B8440F;--brand-800:#8F3208;
+  /* 中性暖灰 —— 不使用纯黑纯白 */
+  --ink-900:#1C1917;--ink-700:#44403C;--ink-500:#78716C;--ink-400:#A8A29E;--ink-300:#D6D3CD;
+  --line-200:#E7E5E0;--line-100:#F2F0EB;--paper:#FBF9F5;--surface:#FFFFFF;
+  /* 语义色 —— 状态色永不参与换肤 */
+  --ok:#15803D;--ok-bg:#EAF6EE;
+  --warn:#B45309;--warn-bg:#FDF3E3;
+  --danger:#C42B1C;--danger-bg:#FCEDEA;
+  --info:#1D5FA8;--info-bg:#EAF1FA;
+  --off:#6B6560;--off-bg:#F2F0EB;
+  /* 圆角 / 字体 / 阴影 */
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-full:999px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --s1:0 1px 2px rgba(28,25,23,.05),0 2px 8px rgba(28,25,23,.04);
+  --s2:0 6px 24px rgba(28,25,23,.10);
+  --sup:0 -4px 18px rgba(28,25,23,.07);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:60px}
+body{margin:0;background:var(--paper);color:var(--ink-900);font-family:var(--font);font-size:14.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+
+/* ---------- 文档外壳 ---------- */
+.topbar{position:sticky;top:0;z-index:80;background:rgba(251,249,245,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:14px;padding:0 20px;height:52px}
+.tb-logo{width:24px;height:24px;border-radius:7px;background:var(--brand-500);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tb-t{font-size:13.5px;font-weight:600;white-space:nowrap}
+.tb-v{font-family:var(--mono);font-size:11px;color:var(--brand-500);border:1px solid var(--brand-200);background:var(--brand-50);padding:1px 7px;border-radius:var(--r-full)}
+.tb-nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto}
+.tb-nav a{font-size:12.5px;color:var(--ink-500);text-decoration:none;padding:6px 11px;border-radius:var(--r-sm);white-space:nowrap}
+.tb-nav a:hover{background:var(--line-100);color:var(--ink-900)}
+.tb-nav a.on{background:var(--ink-900);color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px}
+section{padding:44px 0 8px;border-top:1px solid var(--line-200);margin-top:34px}
+section:first-of-type{border-top:0}
+h1{font-size:29px;line-height:1.3;letter-spacing:-.015em;margin:20px 0 10px;font-weight:600}
+h2{font-size:21px;letter-spacing:-.01em;margin:0 0 8px;font-weight:600;display:flex;align-items:center;gap:9px}
+h2 .num{font-family:var(--mono);font-size:12.5px;color:var(--brand-500);font-weight:400}
+h3{font-size:15.5px;margin:26px 0 10px;font-weight:600}
+h4{font-size:13.5px;margin:0;font-weight:600}
+p{margin:9px 0}
+.lede{font-size:14px;color:var(--ink-500);max-width:82ch}
+.sub{font-size:13px;color:var(--ink-500);margin:0 0 4px;max-width:88ch}
+.note{font-size:12.5px;color:var(--ink-500);background:var(--line-100);border-radius:var(--r-md);padding:11px 14px;margin:14px 0;line-height:1.75}
+.note b{color:var(--ink-900);font-weight:600}
+.note.warn{background:var(--warn-bg);color:#7A3E05}
+.note.warn b{color:#5C2E04}
+.note.dan{background:var(--danger-bg);color:#8F2015}
+.note.dan b{color:#6E180F}
+code{font-family:var(--mono);font-size:12px;background:var(--line-100);padding:1px 5px;border-radius:4px;color:var(--brand-700)}
+pre{font-size:11.5px;line-height:1.85;background:#1C1917;color:#E7E5E0;border-radius:var(--r-md);padding:16px 18px;overflow-x:auto;margin:12px 0;white-space:pre;tab-size:2}
+pre .c{color:#8A857E}
+pre .k{color:#FFAE7E}
+pre .v{color:#A8E6B8}
+
+/* ---------- 组件盒 ---------- */
+.cbox{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-lg);margin:16px 0;overflow:hidden}
+.chd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-200);background:var(--paper)}
+.cid{font-family:var(--mono);font-size:11px;color:var(--brand-700);background:var(--brand-50);border:1px solid var(--brand-200);border-radius:5px;padding:1px 6px;flex:none}
+.ctag{font-size:10.5px;color:var(--ink-400);border:1px solid var(--line-200);border-radius:var(--r-full);padding:1px 8px;flex:none}
+.ctag.sig{border-color:var(--brand-300);color:var(--brand-700);background:var(--brand-50)}
+.ctag.key{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
+.chd .r{margin-left:auto;font-size:11px;color:var(--ink-400);font-family:var(--mono)}
+.cdesc{font-size:12.5px;color:var(--ink-500);padding:11px 16px 0;margin:0;line-height:1.75}
+.cstage{padding:16px;background:
+  linear-gradient(0deg,var(--line-100) 1px,transparent 1px) 0 0/100% 28px,
+  linear-gradient(90deg,var(--line-100) 1px,transparent 1px) 0 0/28px 100%,var(--paper);
+  display:flex;flex-wrap:wrap;gap:14px;align-items:center;border-top:1px solid var(--line-200);margin-top:12px}
+.cstage.col{flex-direction:column;align-items:stretch;gap:10px}
+.cstage.wide{gap:20px}
+.stg{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.stg .lab{font-size:10px;font-family:var(--mono);color:var(--ink-400);letter-spacing:.02em}
+.crow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+table.cs{width:100%;border-collapse:collapse;font-size:12px}
+table.cs th{text-align:left;background:var(--line-100);color:var(--ink-500);font-weight:500;padding:7px 12px;border-top:1px solid var(--line-200);white-space:nowrap;font-size:11px}
+table.cs td{padding:7px 12px;border-top:1px solid var(--line-200);vertical-align:top;line-height:1.65}
+table.cs td.m{font-family:var(--mono);font-size:11.5px}
+table.cs td b{font-weight:600}
+.tagp{display:inline-block;font-size:10.5px;font-family:var(--mono);background:var(--line-100);border-radius:4px;padding:1px 6px;color:var(--ink-700)}
+.tagp.pv{background:var(--danger-bg);color:var(--danger)}
+.tagp.pk{background:var(--ok-bg);color:var(--ok)}
+.tagp.pw{background:var(--warn-bg);color:var(--warn)}
+
+/* ============================================================
+   02 · 原子组件（.ui-* 前缀，均为 1:1 真值）
+   ============================================================ */
+
+/* --- 按钮 --- */
+.b{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--font);font-size:15px;font-weight:600;letter-spacing:.01em;border-radius:var(--r-md);padding:0 20px;height:46px;border:1px solid transparent;cursor:pointer;transition:background .15s ease,transform .08s ease,opacity .15s ease;user-select:none}
+.b:active{transform:scale(.985)}
+.b-pri{background:var(--brand-500);color:#fff}
+.b-pri:hover{background:var(--brand-600)}
+.b-sec{background:var(--surface);color:var(--ink-900);border-color:var(--line-200)}
+.b-sec:hover{background:var(--line-100)}
+.b-tex{background:transparent;color:var(--brand-700);padding:0 8px;font-weight:500}
+.b-tex:hover{background:var(--brand-50)}
+.b-dan{background:var(--surface);color:var(--danger);border-color:#E9C9C4}
+.b-dan:hover{background:var(--danger-bg)}
+.b-danf{background:var(--danger);color:#fff}
+.b-sm{height:34px;font-size:13px;padding:0 13px;border-radius:8px;gap:5px}
+.b-lg{height:52px;font-size:16px;border-radius:var(--r-lg)}
+.b-blk{width:100%}
+.b[disabled],.b.dis{opacity:.42;cursor:not-allowed;pointer-events:none}
+.b-txt{width:13px;height:13px;flex:none}
+.spin{width:13px;height:13px;border:1.6px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;flex:none}
+.spin.dk{border-color:var(--line-200);border-top-color:var(--ink-500)}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* --- 输入 --- */
+.inp{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-md);padding:0 12px;height:46px;transition:border-color .15s,box-shadow .15s}
+.inp.foc{border-color:var(--brand-500);box-shadow:0 0 0 3px rgba(242,107,33,.13)}
+.inp.err{border-color:var(--danger);box-shadow:0 0 0 3px rgba(196,43,28,.10)}
+.inp.dis{background:var(--line-100);color:var(--ink-400)}
+.inp input{border:0;outline:0;background:transparent;font-family:var(--font);font-size:14.5px;color:var(--ink-900);width:100%;min-width:0}
+.inp input::placeholder{color:var(--ink-400)}
+.inp .pre,.inp .suf{font-size:13px;color:var(--ink-400);flex:none}
+.inp .clr{width:16px;height:16px;border-radius:50%;background:var(--ink-300);color:#fff;font-size:11px;line-height:16px;text-align:center;flex:none}
+.helper{font-size:11.5px;color:var(--ink-400);margin-top:5px;line-height:1.6}
+.helper.err{color:var(--danger)}
+.helper.ok{color:var(--ok)}
+.fld{display:block}
+.fld .lb{font-size:12.5px;font-weight:500;color:var(--ink-700);margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.fld .lb i{color:var(--danger);font-style:normal}
+.fld .lb em{font-style:normal;color:var(--ink-400);font-weight:400;font-size:11px;margin-left:auto}
+
+/* --- 数字步进 / 数量 --- */
+.step{display:inline-flex;align-items:center;gap:0}
+.step i{width:26px;height:26px;border-radius:50%;border:1.4px solid var(--brand-500);color:var(--brand-600);display:flex;align-items:center;justify-content:center;font-size:16px;font-style:normal;line-height:1;font-weight:400;cursor:pointer}
+.step i.f{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+.step i.dis{border-color:var(--ink-300);color:var(--ink-300);cursor:not-allowed}
+.step b{font-family:var(--mono);font-size:14px;min-width:30px;text-align:center;font-weight:600}
+
+/* --- 开关 / 复选 / 单选 --- */
+.sw2{width:46px;height:27px;border-radius:var(--r-full);background:var(--ink-300);padding:3px;display:flex;transition:background .2s;cursor:pointer;flex:none}
+.sw2 i{width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);display:block;transition:margin-left .2s;margin-left:0}
+.sw2.on{background:var(--ok)}
+.sw2.on i{margin-left:19px}
+.sw2.dis{opacity:.4;cursor:not-allowed}
+.sw2.brand.on{background:var(--brand-500)}
+.cb{width:19px;height:19px;border-radius:5px;border:1.5px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface);cursor:pointer}
+.cb.on{background:var(--brand-500);border-color:var(--brand-500)}
+.cb.on::after{content:"";width:9px;height:5px;border-left:1.8px solid #fff;border-bottom:1.8px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.cb.half{background:var(--brand-500);border-color:var(--brand-500)}
+.cb.half::after{content:"";width:9px;height:2px;background:#fff;border-radius:1px}
+.cb.dis{background:var(--line-100);border-color:var(--line-200);cursor:not-allowed}
+.rd{width:19px;height:19px;border-radius:50%;border:1.5px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface);cursor:pointer}
+.rd.on{border-color:var(--brand-500);border-width:5.5px}
+.rd.dis{background:var(--line-100);border-color:var(--line-200)}
+.chkc{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.chkc.dis{color:var(--ink-400)}
+
+/* --- Chip / 锚点 / 分段 --- */
+.chip{font-size:12.5px;padding:7px 13px;border-radius:var(--r-full);border:1px solid var(--line-200);background:var(--surface);color:var(--ink-700);white-space:nowrap;cursor:pointer}
+.chip.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff;font-weight:600}
+.chip.dis{color:var(--ink-300);background:var(--line-100);cursor:not-allowed}
+.seg{display:inline-flex;background:var(--line-100);border-radius:var(--r-md);padding:3px}
+.seg span{font-size:13px;padding:6px 15px;border-radius:7px;color:var(--ink-500);cursor:pointer;font-weight:500}
+.seg span.on{background:var(--surface);color:var(--ink-900);box-shadow:var(--s1)}
+
+/* --- Tag / Badge --- */
+.tg{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;line-height:1.6;white-space:nowrap}
+.tg.ok{background:var(--ok-bg);color:var(--ok)}
+.tg.warn{background:var(--warn-bg);color:var(--warn)}
+.tg.dan{background:var(--danger-bg);color:var(--danger)}
+.tg.info{background:var(--info-bg);color:var(--info)}
+.tg.off{background:var(--off-bg);color:var(--off)}
+.tg.brand{background:var(--brand-500);color:#fff}
+.tg.out{background:transparent;border:1px solid currentColor}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.dan{background:var(--danger)}.dot.info{background:var(--info)}.dot.off{background:var(--off)}.dot.brand{background:var(--brand-500)}
+.nb{min-width:17px;height:17px;border-radius:var(--r-full);background:var(--danger);color:#fff;font-family:var(--mono);font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.nb.gray{background:var(--ink-400)}
+.nb.brand{background:var(--brand-500)}
+
+/* --- 金额排版（价签母题） --- */
+.amt{font-family:var(--mono);font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;display:inline-flex;align-items:baseline}
+.amt .c{font-size:.62em;font-weight:600;margin-right:1px}
+.amt .d{font-size:.72em;font-weight:600}
+
+/* --- 图标（业务自绘，24×24 网格，2px 圆头描边） --- */
+.ic{width:24px;height:24px;flex:none;display:block}
+.ic path,.ic circle,.ic rect,.ic line{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.ic.f path,.ic.f circle,.ic.f rect{fill:currentColor;stroke:none}
+
+/* --- 分隔 / 骨架 / 进度 --- */
+.hr{height:1px;background:var(--line-200);border:0;margin:0}
+.hrd{height:0;border-top:1px dashed var(--line-200);margin:0}
+.sk{background:linear-gradient(90deg,var(--line-100) 25%,#EAE7E1 37%,var(--line-100) 63%);background-size:400% 100%;animation:shim 1.4s ease infinite;border-radius:6px}
+@keyframes shim{0%{background-position:100% 0}100%{background-position:0 0}}
+.pg{height:5px;border-radius:3px;background:var(--line-100);overflow:hidden}
+.pg i{display:block;height:100%;background:var(--brand-500);border-radius:3px}
+.pg.ok i{background:var(--ok)}
+.pg.warn i{background:var(--warn)}
+.pg.dan i{background:var(--danger)}
+
+/* --- 头像 / 缩略图 --- */
+.av{width:34px;height:34px;border-radius:50%;background:var(--brand-100);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none}
+.th{width:34px;height:34px;border-radius:var(--r-sm);background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;font-size:9px;flex:none;text-align:center;line-height:1.15;overflow:hidden}
+
+/* --- 列表行（通用） --- */
+.li{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line-100);font-size:14px}
+.li:last-child{border-bottom:0}
+.li .k{color:var(--ink-500);font-size:13.5px}
+.li .v{margin-left:auto;font-weight:500}
+.li .chev{width:7px;height:7px;border-top:1.6px solid var(--ink-300);border-right:1.6px solid var(--ink-300);transform:rotate(45deg);flex:none}
+
+/* --- 表格（通用数据表） --- */
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.dt th{text-align:left;background:var(--paper);color:var(--ink-500);font-weight:500;font-size:11.5px;padding:9px 12px;border-bottom:1px solid var(--line-200);white-space:nowrap}
+table.dt td{padding:10px 12px;border-bottom:1px solid var(--line-100);vertical-align:middle}
+table.dt td.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+table.dt tr:hover td{background:var(--brand-50)}
+
+/* --- 分页 --- */
+.pgn{display:flex;align-items:center;gap:5px;font-size:12px}
+.pgn a{min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-200);border-radius:var(--r-sm);color:var(--ink-700);text-decoration:none;background:var(--surface);padding:0 7px}
+.pgn a.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff;font-weight:600}
+.pgn a.dis{color:var(--ink-300);background:var(--line-100)}
+
+/* --- 面包屑 / 页头 --- */
+.crumb{font-size:12px;color:var(--ink-400);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--ink-900);font-weight:500}
+
+/* --- Token 展示专用 --- */
+.swg{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin:12px 0}
+.sw{border-radius:var(--r-md);height:64px;padding:7px 9px;display:flex;flex-direction:column;justify-content:flex-end;font-size:9.5px;font-family:var(--mono);border:1px solid rgba(28,25,23,.07);line-height:1.5}
+.sw b{font-weight:600;font-size:10px}
+.tokh{display:flex;align-items:center;gap:8px;margin:28px 0 8px;font-size:13.5px;font-weight:600}
+.tokh .n{font-family:var(--mono);font-size:10.5px;color:var(--brand-500);font-weight:400}
+.tspec{display:flex;align-items:baseline;gap:14px;padding:11px 0;border-bottom:1px solid var(--line-100);flex-wrap:wrap}
+.tspec .ex{flex:none;width:200px}
+.tspec .mt{font-family:var(--mono);font-size:11px;color:var(--ink-400);flex:none;width:210px}
+.tspec .us{font-size:12px;color:var(--ink-500);flex:1;min-width:180px}
+.spb{height:12px;background:var(--brand-100);border:1px solid var(--brand-200);border-radius:2px}
+.rul{display:flex;align-items:center;gap:2px;margin:6px 0;font-size:10px;font-family:var(--mono);color:var(--ink-400)}
+.reb{width:13px;height:13px;background:var(--brand-500);border-radius:3px;margin-right:6px}
+.zrow{display:flex;align-items:center;gap:12px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line-100)}
+.zrow .z{font-family:var(--mono);font-size:11px;color:var(--brand-700);width:56px;flex:none}
+.icgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:9px;margin:12px 0}
+.iccell{border:1px solid var(--line-200);border-radius:var(--r-md);padding:11px 6px 8px;text-align:center;background:var(--surface)}
+.iccell .ic{margin:0 auto 7px;color:var(--ink-700)}
+.iccell span{font-size:9.5px;color:var(--ink-500);display:block;line-height:1.35}
+.iccell code{font-size:8.5px;background:transparent;color:var(--ink-400);padding:0}
+.cmp2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.cmp2{grid-template-columns:1fr}}
+.mini{font-size:11px;color:var(--ink-400);line-height:1.6}
+
+/* ============================================================
+   03 · 业务签名组件样式
+   ============================================================ */
+/* 楼栋牌（全站唯一样式，6 个位置复用） */
+.bdg{display:flex;align-items:center;gap:8px;background:var(--brand-500);color:#fff;border-radius:var(--r-md);padding:0 12px;height:44px;font-size:15px;font-weight:600}
+.bdg.off{background:var(--off-bg);color:var(--off);border:1px solid var(--line-200)}
+.bdg.gray{background:var(--surface);color:var(--ink-900);border:1px solid var(--line-200);font-weight:500}
+.bdg .ov{margin-left:auto;font-size:11px;font-weight:500;opacity:.85}
+.bdg .cv{width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-2px,-2px);opacity:.9;flex:none}
+.bdg.gray .cv{border-color:var(--ink-400)}
+
+/* 库存格 */
+.sc2{flex:1;min-width:0;border:1px solid var(--line-200);border-radius:var(--r-md);padding:7px 4px 8px;text-align:center;background:var(--surface);position:relative}
+.sc2 .v{font-family:var(--mono);font-size:17px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.sc2 .k{font-size:9.5px;color:var(--ink-400);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc2.low{background:var(--warn-bg);border-color:#EFD9B4}.sc2.low .v{color:var(--warn)}
+.sc2.zero{background:var(--danger-bg);border-color:#E9C9C4}.sc2.zero .v{color:var(--danger)}
+.sc2.off{background:var(--off-bg);border-color:var(--line-200)}.sc2.off .v{color:var(--off)}
+.sc2.edit{border-color:var(--brand-500);box-shadow:0 0 0 3px rgba(242,107,33,.13)}
+.sc2 .ed{position:absolute;inset:3px;border-radius:7px;border:1.5px dashed var(--brand-400);pointer-events:none}
+
+/* 时间轴条（24h 三层） */
+.ta{position:relative;height:58px;margin:8px 0 0}
+.ta .track{position:absolute;left:0;right:0;top:16px;height:7px;border-radius:4px;background:var(--line-100)}
+.ta .sg{position:absolute;top:16px;height:7px;border-radius:4px}
+.ta .lk{position:absolute;top:26px;height:7px;border-radius:4px}
+.ta .mk{position:absolute;top:9px;width:1.5px;height:22px;background:var(--ink-300)}
+.ta .tk,.ta .tick{position:absolute;font-size:9px;font-family:var(--mono);color:var(--ink-400);top:39px;transform:translateX(-50%)}
+.ta .now{position:absolute;top:3px;width:13px;height:13px;border-radius:50%;background:var(--brand-500);border:2.5px solid #fff;box-shadow:0 0 0 1.5px var(--brand-500);transform:translateX(-50%)}
+.ta .cut{position:absolute;top:6px;width:2px;height:27px;background:var(--warn)}
+.ta .lbl{position:absolute;font-size:9.5px;color:var(--ink-500);top:-6px;font-family:var(--mono)}
+
+/* 商品卡行 */
+.pi{display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid var(--line-100);background:var(--surface)}
+.pi .bd{flex:1;min-width:0;display:flex;flex-direction:column}
+.pi .nm{font-size:14px;font-weight:500;line-height:1.4}
+.pi .ds{font-size:11.5px;color:var(--ink-400);margin-top:3px}
+.pi .bt{margin-top:auto;display:flex;align-items:flex-end;gap:8px;padding-top:7px}
+.pi .rt{margin-left:auto;text-align:right}
+.pi.grayed .th{filter:grayscale(1);opacity:.5}
+.pi.grayed .nm{color:var(--ink-400)}
+.pi .th{width:72px;height:72px;border-radius:var(--r-md);flex:none;background:var(--line-100);display:flex;align-items:center;justify-content:center;font-size:9.5px;color:var(--ink-400);text-align:center;line-height:1.2;overflow:hidden}
+.pi .th.brand{background:var(--brand-50);color:var(--brand-600)}
+.pi .add{width:26px;height:26px;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;font-weight:300;padding-bottom:2px;flex:none}
+.pi .gray{width:26px;height:26px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+.step{display:inline-flex;align-items:center;gap:0}
+.step i{width:26px;height:26px;border-radius:50%;border:1.4px solid var(--brand-500);color:var(--brand-600);display:flex;align-items:center;justify-content:center;font-size:16px;font-style:normal;line-height:1;cursor:pointer}
+.step i.f{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+.step i.dis{border-color:var(--ink-300);color:var(--ink-300);cursor:not-allowed}
+.step b{font-family:var(--mono);font-size:14px;min-width:30px;text-align:center;font-weight:600}
+
+/* 吸底购物车条 */
+.cartbar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-full);padding:8px 8px 8px 14px;box-shadow:var(--s1)}
+.cartbar .cn{width:26px;height:26px;border-radius:50%;background:var(--brand-500);color:#fff;font-size:12px;font-weight:600;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:none}
+.cartbar .go{background:var(--brand-500);color:#fff;border-radius:var(--r-full);padding:9px 18px;font-size:13px;font-weight:600;flex:none}
+
+/* 订单卡 */
+.oc{border:1px solid var(--line-200);border-radius:var(--r-md);background:var(--surface);padding:12px 13px}
+.oc .hd{display:flex;align-items:center;gap:7px;padding-bottom:10px;border-bottom:1px dashed var(--line-200)}
+.oc .bd{padding:10px 0 0}
+
+/* 配送行 */
+.drow{display:flex;align-items:center;gap:11px;padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--line-100)}
+.drow .rm{font-family:var(--mono);font-size:15px;font-weight:600;min-width:54px}
+.drow .mid{flex:1;min-width:0}
+.drow .ck{width:26px;height:26px;border-radius:50%;border:1.6px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface)}
+.drow.done .ck{background:var(--ok);border-color:var(--ok)}
+.drow.done .rm{color:var(--ink-400)}
+.drow.done .mid{color:var(--ink-400)}
+.dgrp{display:flex;align-items:center;gap:8px;padding:10px 14px 7px;background:var(--paper)}
+.dgrp .f{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-700);padding:3px 9px;border-radius:var(--r-full);background:var(--line-100)}
+.dfold{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--ok-bg);color:var(--ok);font-size:12.5px;font-weight:500}
+
+/* 撤销条 */
+.undo{display:flex;align-items:center;gap:10px;background:#221E1B;color:#fff;border-radius:var(--r-md);padding:10px 12px;position:relative;overflow:hidden}
+.undo .ut{font-size:12.5px;flex:1}
+.undo .ua{font-size:12.5px;font-weight:600;color:#FFAE7E}
+.undo .ub{position:absolute;left:0;bottom:0;height:2.5px;background:#FFAE7E;width:100%}
+
+/* 双同步说明卡 */
+.sync2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.sync2{grid-template-columns:1fr}}
+.sync2 .s{background:var(--paper);border:1px solid var(--line-200);border-radius:var(--r-md);padding:12px 13px}
+.sync2 .s.a{border-color:var(--brand-300);background:var(--brand-50)}
+.sync2 .s .h{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;margin-bottom:7px}
+.sync2 .s .ix{width:18px;height:18px;border-radius:5px;background:var(--brand-500);color:#fff;font-size:10px;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:none}
+.sync2 .s.b .ix{background:var(--ink-400)}
+.sync2 .s .d{font-size:11.5px;color:var(--ink-500);line-height:1.7}
+.sync2 .s .d b{color:var(--ink-900);font-weight:600}
+.sync2 .s .d .no{color:var(--danger);font-weight:600}
+
+/* 账本行 / 小票 */
+.ledg{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line-100)}
+.ledg:last-child{border-bottom:0}
+.rct{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-md);padding:14px}
+.rct .rw{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 0}
+.rct .rw .k{color:var(--ink-500)}
+.rct .rw .v{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.rct .rw.tot{border-top:1px dashed var(--line-200);margin-top:6px;padding-top:11px;font-size:14.5px;font-weight:600}
+.rct .rw.tot .k{color:var(--ink-900);font-weight:600}
+.rct .rw.tot .v{color:var(--danger);font-size:17px}
+
+/* 双账户卡 */
+.acct{border:1px solid var(--line-200);border-radius:var(--r-md);background:var(--surface);padding:13px}
+.acct.warn{border-color:#EFD9B4;background:var(--warn-bg)}
+.acct.dan{border-color:#E9C9C4;background:var(--danger-bg)}
+.acct .top{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-500)}
+.acct .big{font-family:var(--mono);font-size:24px;font-weight:600;margin:7px 0 3px;letter-spacing:-.02em}
+.acct .btnx{display:block;text-align:center;font-size:12.5px;font-weight:600;border-radius:var(--r-md);padding:9px 0;margin-top:11px;background:var(--brand-500);color:#fff}
+
+/* 三数字条 */
+.dash{display:flex;gap:8px}
+.dash .m{flex:1;background:var(--paper);border:1px solid var(--line-100);border-radius:var(--r-md);padding:9px 11px}
+.dash .m .k{font-size:10.5px;color:var(--ink-500)}
+.dash .m .v{font-family:var(--mono);font-size:19px;font-weight:600;line-height:1.25}
+
+/* 步骤条（上线流水线） */
+.pstep{display:flex;gap:0;overflow-x:auto;padding:6px 0}
+.pstep .st{flex:none;min-width:118px;padding-right:6px}
+.pstep .bar{height:4px;border-radius:2px;background:var(--line-100);margin-bottom:7px}
+.pstep .st.done .bar{background:var(--ok)}
+.pstep .st.cur .bar{background:var(--warn)}
+.pstep .st .t{font-size:11px;font-weight:600}
+.pstep .st .d{font-size:10px;color:var(--ink-400);font-family:var(--mono)}
+
+/* 隐私护栏卡 */
+.guard{border:1px solid #C6DCF1;background:var(--info-bg);border-radius:var(--r-md);padding:13px 14px}
+.guard .hh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--info);margin-bottom:8px}
+.guard .li2{display:flex;gap:8px;font-size:12px;color:#17497F;line-height:1.7;padding:3px 0}
+
+/* ============================================================
+   04 · 反馈与浮层样式
+   ============================================================ */
+.toast{display:inline-flex;align-items:flex-start;gap:9px;background:#221E1B;color:#fff;border-radius:var(--r-md);padding:11px 14px;font-size:13px;box-shadow:var(--s2);max-width:340px;line-height:1.6}
+.toast .ti{width:16px;height:16px;flex:none;margin-top:1px}
+.toast.ok .ti{color:#7DD99B}.toast.warn .ti{color:#FFC266}.toast.dan .ti{color:#FF8E7E}.toast.info .ti{color:#8FC2F0}
+.toast b{font-weight:600}
+.mask{background:rgba(28,25,23,.45);border-radius:var(--r-md);padding:24px 18px;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--s2);overflow:hidden;width:100%;max-width:320px}
+.modal .mh{padding:22px 20px 0;text-align:center}
+.modal .mt{font-size:16px;font-weight:600;margin-bottom:9px}
+.modal .mb{font-size:13px;color:var(--ink-500);line-height:1.75}
+.modal .mb .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0}
+.modal .mb .kv b{font-family:var(--mono);color:var(--ink-900);font-weight:600}
+.modal .mf{display:flex;border-top:1px solid var(--line-200);margin-top:20px}
+.modal .mf span{flex:1;text-align:center;padding:14px 0;font-size:15px;font-weight:500;color:var(--ink-700)}
+.modal .mf span+span{border-left:1px solid var(--line-200)}
+.modal .mf .p{color:var(--brand-700);font-weight:600}
+.modal .mf .d{color:var(--danger);font-weight:600}
+.drawer{background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;overflow:hidden;box-shadow:var(--s2);width:100%;max-width:400px}
+.drawer .dh{padding:15px 16px 13px;border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:9px}
+.drawer .dh .t{font-size:15px;font-weight:600}
+.drawer .dh .x{margin-left:auto;width:26px;height:26px;border-radius:50%;background:var(--line-100);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--ink-500)}
+.drawer .db{padding:4px 0 8px}
+.sheet{background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;overflow:hidden;width:100%;max-width:400px;box-shadow:var(--s2)}
+.sheet .sh{padding:13px 16px 10px;font-size:11.5px;color:var(--ink-400);text-align:center;border-bottom:1px solid var(--line-100)}
+.sheet .it{padding:16px;font-size:15px;text-align:center;border-bottom:1px solid var(--line-100)}
+.sheet .it.dan{color:var(--danger)}
+.sheet .it.cancel{font-weight:600;border-bottom:0;background:var(--paper)}
+.sheet .it .sub{display:block;font-size:11px;color:var(--ink-400);margin-top:3px;font-weight:400}
+.bub{position:relative;background:var(--ink-900);color:#fff;border-radius:var(--r-md);padding:10px 13px;font-size:12px;line-height:1.65;max-width:270px;box-shadow:var(--s2)}
+.bub::after{content:"";position:absolute;bottom:-5px;left:26px;width:10px;height:10px;background:var(--ink-900);transform:rotate(45deg)}
+.bub b{color:#FFAE7E;font-weight:600}
+.bub .bx{position:absolute;top:8px;right:9px;font-size:11px;color:rgba(255,255,255,.45)}
+.nbdot{display:inline-flex;align-items:center;gap:7px;font-size:12.5px}
+.nbdot .p{width:8px;height:8px;border-radius:50%;background:var(--danger);flex:none}
+.nbdot .p.g{background:var(--ink-300)}
+
+/* ============================================================
+   真机框架（375×812，含状态栏 / 导航 / TabBar / 安全区）
+   ============================================================ */
+.ph{width:375px;flex:none;height:812px;background:var(--surface);border:1px solid var(--line-200);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:var(--s1)}
+.ph .sb{height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 7px;font-size:13px;font-weight:600;letter-spacing:.01em}
+.ph .sb .r{display:flex;align-items:center;gap:5px;font-size:11px}
+.ph .sb .b3{display:flex;align-items:flex-end;gap:1.5px}
+.ph .sb .b3 i{display:block;width:3px;background:var(--ink-900);border-radius:1px;opacity:.9}
+.ph .sb .bat{width:21px;height:10.5px;border:1.2px solid var(--ink-900);border-radius:3px;position:relative;opacity:.9}
+.ph .sb .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-900);border-radius:0 1px 1px 0}
+.ph .sb .bat i{position:absolute;inset:1.5px;width:70%;background:var(--ink-900);border-radius:1px;display:block}
+.ph .nb{height:44px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600;position:relative;border-bottom:1px solid var(--line-100)}
+.ph .nb .bk{position:absolute;left:14px;top:50%;width:9px;height:9px;border-left:1.7px solid var(--ink-900);border-bottom:1.7px solid var(--ink-900);transform:translateY(-50%) rotate(45deg)}
+.ph .nb .cap{position:absolute;right:6px;top:6px;width:87px;height:32px;border:1px solid var(--line-200);border-radius:999px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--ink-500)}
+.ph .nb .cap u{width:5px;height:5px;border-radius:50%;background:var(--ink-900);opacity:.6}
+.ph .nb .cap s{width:5px;height:5px;border-radius:50%;border:1px solid var(--ink-400);display:block}
+.ph .bd{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--paper);display:flex;flex-direction:column}
+.ph .bd>*{flex:none}
+.ph .tb{height:50px;flex:none;border-top:1px solid var(--line-200);display:flex;background:var(--surface);align-items:center}
+.ph .tb .t{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--ink-400)}
+.ph .tb .t.on{color:var(--brand-500);font-weight:500}
+.ph .tb .t .gi{width:22px;height:22px;border-radius:7px;border:1.8px solid currentColor;position:relative}
+.ph .tb .t .gi::after{content:"";position:absolute;inset:4px;border-radius:3px;background:currentColor;opacity:.28}
+.ph .tb .t.on .gi::after{opacity:1}
+.ph .tb .t .nb2{position:absolute;transform:translate(14px,-8px)}
+.ph .hb{height:34px;flex:none;display:flex;align-items:center;justify-content:center}
+.ph .hb i{width:134px;height:5px;border-radius:3px;background:var(--ink-900);opacity:.22;display:block}
+/* 浏览器窗口框架（网页端 / 后台） */
+.win{width:100%;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;overflow:hidden;box-shadow:var(--s1)}
+.win .wt{height:34px;background:var(--line-100);display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--line-200)}
+.win .wt u{width:9px;height:9px;border-radius:50%;background:#E0DDD6;display:block}
+.win .wt span{margin-left:10px;font-size:11px;color:var(--ink-400);font-family:var(--mono)}
+.win .wb{display:flex;min-height:340px}
+.win .ws{width:168px;flex:none;border-right:1px solid var(--line-200);background:var(--paper);padding:12px 0}
+.win .ws .lg{display:flex;align-items:center;gap:7px;padding:0 14px 12px;font-size:12.5px;font-weight:600}
+.win .ws .lg .sq{width:22px;height:22px;border-radius:6px;background:var(--brand-500);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;flex:none}
+.win .ws a{display:block;padding:8px 14px;font-size:12.5px;color:var(--ink-500);text-decoration:none}
+.win .ws a.on{background:var(--brand-50);color:var(--brand-700);font-weight:600;border-right:2px solid var(--brand-500)}
+.win .wm{flex:1;min-width:0;padding:16px}
+.frames{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin:16px 0}
+.fr1{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.fr1 .cap2{font-size:12px;color:var(--ink-500);line-height:1.65;max-width:375px}
+.fr1 .cap2 b{color:var(--ink-900);font-weight:600;display:block;margin-bottom:2px}
+/* 骨架专用 */
+.skl{background:linear-gradient(90deg,var(--line-100) 25%,#EAE7E1 37%,var(--line-100) 63%);background-size:400% 100%;animation:sh 1.4s ease infinite;border-radius:6px}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){.skl,.sk{animation:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="tb-logo">零</span>
+  <span class="tb-t">加载 · 过渡 · 状态全集</span>
+  <span class="tb-v">v3.0</span>
+  <nav class="tb-nav">
+    <a href="#b0">00 总览</a>
+    <a href="#b1">01 过渡页</a>
+    <a href="#b2">02 骨架屏</a>
+    <a href="#b3">03 进度与长任务</a>
+    <a href="#b4">04 空状态</a>
+    <a href="#b5">05 错误与网络</a>
+    <a href="#b6">06 状态语言</a>
+    <a href="#b7">07 动效规范</a>
+  </nav>
+</div>
+<main class="wrap">
+
+<!-- ============ 00 总览 ============ -->
+<section id="b0">
+  <h1>加载 · 过渡 · 状态全集</h1>
+  <blockquote style="border-left:3px solid var(--brand-500);margin:14px 0 6px;padding:2px 0 2px 16px;color:var(--ink-700);font-size:14px;line-height:1.85">
+    一半的真实使用发生在"事情不顺利"的时候：网络慢、数据没到、没有数据、时间窗关了。<br>
+    本文件把这四种情况全部设计出来 —— <b>任何没有设计的状态，最终都会变成白屏或「操作失败」</b>。
+  </blockquote>
+
+  <h3>加载体系总览：什么场景用什么</h3>
+  <p class="sub">这是本文件最重要的一张表。开发时先查这张表，再决定用哪种加载方式——不要一律用转圈。</p>
+  <table class="cs">
+    <tr><th style="width:20%">场景</th><th style="width:20%">使用</th><th style="width:16%">时长</th><th>理由</th></tr>
+    <tr><td>App 冷启动</td><td><b>启动闪屏</b>（品牌页）</td><td class="m">≤ 1.5s</td><td>启动时的空白会让用户以为没反应。闪屏是唯一允许"只放 logo"的地方</td></tr>
+    <tr><td>租户解析中</td><td><b>品牌骨架屏</b>（首页骨架）</td><td class="m">200–800ms</td><td>解析期间用户已在等，直接给首页骨架比给转圈更快到达"有事可做"的感觉</td></tr>
+    <tr><td>页面首次进入</td><td><b>骨架屏</b>（结构一致）</td><td class="m">任意</td><td>骨架让用户提前看到"这页有什么"，且数据到达时布局不跳动</td></tr>
+    <tr><td>页面内局部刷新</td><td><b>局部骨架</b>（只替换内容区）</td><td class="m">任意</td><td>不要整页骨架——会把用户已经看到的内容清空</td></tr>
+    <tr><td>翻页 / 加载更多</td><td><b>底部行内 loading</b></td><td class="m">任意</td><td>列表底部出现三行骨架 + "正在加载"，不用全屏</td></tr>
+    <tr><td>下拉刷新</td><td><b>顶部指示器</b></td><td class="m">≥ 600ms</td><td>即使数据很快返回，也要停留 600ms——否则用户看不到"刷新过"</td></tr>
+    <tr><td>按钮提交</td><td><b>按钮内 loading</b></td><td class="m">任意</td><td>锁住按钮防重复提交，文案改进行时</td></tr>
+    <tr><td>支付跳转前后</td><td><b>支付中转页</b></td><td class="m">任意</td><td>微信支付唤起有 1–3 秒延迟，必须有中间态承接</td></tr>
+    <tr><td>批量长任务</td><td><b>进度条 + 百分比 + 可离开</b></td><td class="m">数分钟</td><td>推送 37 个租户、导入 500 行 Excel：不能让人干等</td></tr>
+    <tr><td>全屏阻塞（极少）</td><td><b>遮罩 loading</b></td><td class="m">&lt; 3s</td><td>只在"必须等待且不能做其他事"时使用。本产品只有 2 处</td></tr>
+    <tr><td>无数据</td><td><b>空状态</b>（说明 + 下一步）</td><td class="m">—</td><td>见 §04。任何空状态必须给出下一步</td></tr>
+    <tr><td>失败</td><td><b>错误态</b>（原因 + 重试）</td><td class="m">—</td><td>见 §05。禁止只写"操作失败"</td></tr>
+  </table>
+
+  <div class="note warn"><b>三条不可违反的加载规则：</b><br>
+    ① <b>首屏数据未到时，禁止"白屏 + 居中转圈"。</b>必须用与该页结构一致的骨架屏（AC-06）；<br>
+    ② <b>禁止整页骨架用于局部刷新。</b>已经看到的内容不能被清空；<br>
+    ③ <b>骨架块的尺寸必须与真实内容一致。</b>不一致会导致数据到达时布局跳动，比没有骨架更难受。
+  </div>
+</section>
+
+<!-- ============ 01 过渡页 ============ -->
+<section id="b1">
+  <h2><span class="num">01</span>过渡页</h2>
+  <p class="sub">过渡页的任务是<b>把"系统正在做事"变成"用户看得懂的事"</b>。本产品有 6 个必须存在的过渡场景，凡缺一处，就会在某台慢手机上变成白屏。</p>
+
+  <h3>1.1 启动闪屏 → 租户解析中</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="bd" style="background:var(--brand-500);align-items:center;justify-content:center">
+          <div style="width:64px;height:64px;border-radius:18px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;margin-bottom:18px">
+            <svg class="ic" style="width:30px;height:30px;color:#fff" viewBox="0 0 24 24"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/></svg>
+          </div>
+          <div style="color:#fff;font-size:19px;font-weight:600;letter-spacing:.02em">张姐零食铺</div>
+          <div style="color:rgba(255,255,255,.8);font-size:11.5px;margin-top:7px">送到宿舍房间</div>
+          <div style="position:absolute;bottom:64px;color:rgba(255,255,255,.55);font-size:10.5px">校园内 30 分钟送达</div>
+        </div>
+        <div class="hb" style="background:var(--brand-500)"><i style="background:#fff;opacity:.5"></i></div>
+      </div>
+      <p class="cap2"><b>① 启动闪屏（≤ 1.5s）</b>品牌色整屏 + 店铺名 + 一句主张。<b>不放 loading 圈</b>——启动阶段放圈会让慢手机看起来像卡住了。闪屏数据来自本地缓存（上次解析结果），因此能做到"立刻有内容"。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">点单<span class="cap"><u></u><s></s></span></div>
+        <div class="bd" style="padding:0">
+          <div class="skl" style="height:44px;border-radius:10px;margin:12px 16px 0"></div>
+          <div class="skl" style="height:62px;border-radius:10px;margin:10px 16px 0"></div>
+          <div style="display:flex;gap:8px;margin:12px 16px 0">
+            <span class="skl" style="height:32px;width:64px;border-radius:999px"></span>
+            <span class="skl" style="height:32px;width:76px;border-radius:999px"></span>
+            <span class="skl" style="height:32px;width:58px;border-radius:999px"></span>
+            <span class="skl" style="height:32px;width:70px;border-radius:999px"></span>
+          </div>
+          <div style="margin-top:14px">
+            <div style="display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid var(--line-100)">
+              <span class="skl" style="width:72px;height:72px;border-radius:10px"></span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px;justify-content:center">
+                <span class="skl" style="height:14px;width:70%"></span><span class="skl" style="height:11px;width:45%"></span><span class="skl" style="height:16px;width:56px"></span>
+              </div>
+            </div>
+            <div style="display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid var(--line-100)">
+              <span class="skl" style="width:72px;height:72px;border-radius:10px"></span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px;justify-content:center">
+                <span class="skl" style="height:14px;width:62%"></span><span class="skl" style="height:11px;width:38%"></span><span class="skl" style="height:16px;width:56px"></span>
+              </div>
+            </div>
+            <div style="display:flex;gap:11px;padding:13px 16px">
+              <span class="skl" style="width:72px;height:72px;border-radius:10px"></span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px;justify-content:center">
+                <span class="skl" style="height:14px;width:74%"></span><span class="skl" style="height:11px;width:42%"></span><span class="skl" style="height:16px;width:56px"></span>
+              </div>
+            </div>
+          </div>
+          <div style="margin:16px;height:46px;border-radius:999px;border:1px solid var(--line-200);background:var(--surface)"></div>
+        </div>
+        <div class="tb">
+          <div class="t on"><span class="gi"></span>点单</div><div class="t"><span class="gi"></span>分类</div><div class="t"><span class="gi"></span>订单</div><div class="t"><span class="gi"></span>我的</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>② 租户解析中（200–800ms）</b>直接渲染首页骨架，而不是给一个转圈页。<b>楼栋牌位、时间条位都预留</b>，所以数据到达时不会跳版。骨架里的胶囊、卡片圆角与真实元素一致。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">店铺未开通<span class="cap"><u></u><s></s></span></div>
+        <div class="bd" style="align-items:center;justify-content:center;padding:0 32px;text-align:center">
+          <div style="width:66px;height:66px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+            <svg class="ic" style="width:29px;height:29px" viewBox="0 0 24 24"><path d="M4 20V9.5L12 4l8 5.5V20"/><path d="M9.5 20v-6h5v6"/></svg>
+          </div>
+          <div style="font-size:16.5px;font-weight:600;margin-bottom:8px">这家店还没有开通</div>
+          <div style="font-size:12.5px;color:var(--ink-500);line-height:1.8">你打开的小程序尚未完成配置。<br>如果你是店主，请联系我们的服务人员。</div>
+          <div style="margin-top:20px;width:100%;display:flex;flex-direction:column;gap:9px">
+            <span style="background:var(--brand-500);color:#fff;border-radius:10px;padding:13px 0;font-size:14px;font-weight:600">联系客服</span>
+            <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:12px 0;font-size:13.5px">重新加载</span>
+          </div>
+          <div style="position:absolute;bottom:46px;font-size:10.5px;color:var(--ink-400);font-family:var(--mono)">AppID: wx7f2e…d41c</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>③ 租户解析失败</b>AppID 未匹配到租户时<b>绝不能白屏</b>（§2.2）。底部展示 AppID 缩写，方便客服一眼定位是哪个租户配错了。给两条出路：联系客服 / 重试。</p>
+    </div>
+  </div>
+
+  <table class="cs">
+    <tr><th style="width:18%">过渡场景</th><th style="width:22%">触发条件</th><th style="width:18%">时长控制</th><th>关键设计点</th></tr>
+    <tr><td>启动闪屏</td><td>App 冷启动</td><td class="m">最长 1.5s，超时直接进骨架</td><td>数据来自<code>本地缓存</code>（上次的 tenant_code + 店铺名 + 主题色），因此可立即渲染，不需要等接口。<b>不放 loading 圈</b></td></tr>
+    <tr><td>租户解析中</td><td>POST /api/tenant/resolve 返回前</td><td class="m">200–800ms 正常</td><td>直接进首页骨架。若 &gt; 3s 则在骨架顶部显示一条「网络较慢，正在重试」细条</td></tr>
+    <tr><td>解析失败</td><td>AppID 未匹配 / 租户已停用</td><td class="m">—</td><td>不白屏、不报错堆栈。必须给「联系客服」与「重新加载」两条出路</td></tr>
+  </table>
+
+  <h3>1.2 支付中转与支付结果</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">支付<span class="cap"><u></u><s></s></span></div>
+        <div class="bd" style="align-items:center;justify-content:center;padding:0 36px;text-align:center">
+          <div style="width:52px;height:52px;border:3px solid var(--line-200);border-top-color:var(--brand-500);border-radius:50%;animation:sp 1s linear infinite;margin-bottom:20px"></div>
+          <div style="font-size:15px;font-weight:600">正在唤起微信支付…</div>
+          <div style="font-size:12px;color:var(--ink-400);margin-top:8px;line-height:1.75">如果没有反应，请检查是否允许了小程序<br>跳转到微信支付</div>
+          <div style="margin-top:26px;width:100%">
+            <div style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:11px 13px;text-align:left">
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--ink-500)">订单号</span><span class="mono">ZS-20260921-0037</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--ink-500)">应付</span><span class="amt" style="font-size:14px"><span class="c">¥</span>19<span class="d">.00</span></span></div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:52px;font-size:12.5px;color:var(--brand-700)">遇到问题？查看订单</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>④ 支付中转页</b>微信支付唤起有 1–3 秒延迟。<b>把订单号与金额摆在中间</b>，让用户在等待时能确认"我付的是这一单"。底部给"查看订单"作为逃生出口——因为订单已经创建（待付款态），用户可以随时再付。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">支付成功<span class="cap"><u></u><s></s></span></div>
+        <div class="bd" style="align-items:center;padding:34px 24px 0">
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;margin-bottom:15px">
+            <svg class="ic" style="width:30px;height:30px" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          </div>
+          <div style="font-size:19px;font-weight:600">支付成功</div>
+          <div style="font-size:12.5px;color:var(--ink-500);margin-top:7px;text-align:center">已通知店家，请等待接单</div>
+          <div style="margin-top:22px;width:100%">
+            <div class="rct">
+              <div class="rw"><span class="k">商户</span><span class="v" style="font-family:var(--font)">张姐零食铺</span></div>
+              <div class="rw"><span class="k">订单号</span><span class="v">ZS-20260921-0037</span></div>
+              <div class="rw"><span class="k">送到</span><span class="v" style="font-family:var(--font)">1 栋 302 室</span></div>
+              <div class="rw tot"><span class="k">实付</span><span class="v">¥19.00</span></div>
+            </div>
+          </div>
+          <div style="margin-top:18px;width:100%;display:flex;gap:9px">
+            <span style="flex:1;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:13px 0;font-size:13.5px;text-align:center">查看订单</span>
+            <span style="flex:1;background:var(--brand-500);color:#fff;border-radius:10px;padding:13px 0;font-size:13.5px;font-weight:600;text-align:center">继续逛逛</span>
+          </div>
+          <div style="margin-top:14px;font-size:11px;color:var(--ink-400);text-align:center;line-height:1.7">本店 22:00 截单 · 送达后你会收到一条通知</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>⑤ 支付结果 · 成功</b>三件事必须同时出现：<b>订单号（可核对）+ 送到哪（可核对）+ 下一步</b>。下方一句"送达后你会收到一条通知"是在<a style="color:var(--brand-700);text-decoration:none">管理预期</a>——因为微信订阅消息只能发一条，学生不会看到每一步状态。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">支付结果<span class="cap"><u></u><s></s></span></div>
+        <div class="bd" style="align-items:center;padding:34px 24px 0">
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--warn-bg);color:var(--warn);display:flex;align-items:center;justify-content:center;margin-bottom:15px">
+            <svg class="ic" style="width:30px;height:30px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          </div>
+          <div style="font-size:19px;font-weight:600">支付结果确认中</div>
+          <div style="font-size:12.5px;color:var(--ink-500);margin-top:7px;text-align:center;line-height:1.75">银行可能还在处理，通常在 1 分钟内完成。<br>这个订单已经为你保留，请稍后刷新查看。</div>
+          <div style="margin-top:20px;width:100%">
+            <div style="border:1px solid #EFD9B4;background:var(--warn-bg);border-radius:10px;padding:12px 13px;text-align:left">
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:#7A3E05">订单号</span><span class="mono" style="color:#7A3E05">ZS-20260921-0037</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:#7A3E05">应付</span><span class="mono" style="font-weight:600;color:#7A3E05">¥19.00</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:#7A3E05">状态</span><span style="color:#7A3E05">待付款</span></div>
+            </div>
+          </div>
+          <div style="margin-top:18px;width:100%;display:flex;flex-direction:column;gap:9px">
+            <span style="background:var(--brand-500);color:#fff;border-radius:10px;padding:13px 0;font-size:14px;font-weight:600;text-align:center">刷新支付状态</span>
+            <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:12px 0;font-size:13.5px;text-align:center">前往订单列表</span>
+          </div>
+          <div style="margin-top:14px;font-size:11px;color:var(--ink-400);text-align:center;line-height:1.7">订单保留 15 分钟，超时未支付将自动取消</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>⑥ 支付结果 · 处理中（最容易被漏掉的一个）</b>"支付成功但订单未生成"是需求点名的风险（§9.30）。<b>这一屏的措辞必须让用户安心：</b>订单已保留、金额待确认、可主动刷新。<b>禁止</b>写"支付失败请重新支付"——那会让学生重复付款。</p>
+    </div>
+  </div>
+
+  <table class="cs">
+    <tr><th style="width:16%">屏幕</th><th style="width:24%">进入时机</th><th style="width:22%">出口</th><th>必须出现的字段</th></tr>
+    <tr><td>支付中转</td><td>点击"立即支付"到微信支付唤起前</td><td>查看订单 / 自动跳转结果页</td><td class="m">order_no · amount_fen</td></tr>
+    <tr><td>支付成功</td><td>支付回调确认成功</td><td>查看订单 / 继续逛逛</td><td class="m">order_no · amount_fen · building_name · room · shop_name</td></tr>
+    <tr><td>支付失败</td><td>用户主动取消 或 支付返回失败</td><td><b>重新支付</b> / 前往订单列表</td><td class="m">order_no · amount_fen · 失败原因</td></tr>
+    <tr><td>支付处理中</td><td>已调起但未收到回调（网络/银行延迟）</td><td><b>刷新支付状态</b> / 前往订单列表</td><td class="m">order_no · amount_fen · status=待付款 · 保留时长</td></tr>
+  </table>
+  <div class="note dan"><b>「处理中」这一屏必须实现。</b>不做它，用户在银行延迟的 30 秒里会看到"支付失败"，然后重复支付。这一屏的成本很低（一个静态页），但省掉的是真实的重复付款与退款工单。</div>
+</section>
+
+<!-- ============ 02 骨架屏 ============ -->
+<section id="b2">
+  <h2><span class="num">02</span>骨架屏</h2>
+  <p class="sub">骨架屏不是"更好看的 loading"，它的唯一价值是<b>让数据到达时布局不跳动</b>。因此骨架块的<b>位置、尺寸、圆角必须与真实内容完全一致</b>（AC-06）。</p>
+
+  <h3>2.1 学生端 · 分类页与订单列表</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">分类<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div class="skl" style="height:44px;border-radius:10px;margin:12px 16px 0"></div>
+          <div style="display:flex;margin-top:12px;flex:1">
+            <div style="width:92px;flex:none;border-right:1px solid var(--line-100);padding:0 8px">
+              <span class="skl" style="display:block;height:44px;margin-bottom:6px"></span>
+              <span class="skl" style="display:block;height:44px;margin-bottom:6px"></span>
+              <span class="skl" style="display:block;height:44px;margin-bottom:6px"></span>
+              <span class="skl" style="display:block;height:44px;margin-bottom:6px"></span>
+              <span class="skl" style="display:block;height:44px"></span>
+            </div>
+            <div style="flex:1;padding:0 16px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+                <div><span class="skl" style="display:block;height:96px;border-radius:10px"></span><span class="skl" style="display:block;height:13px;width:80%;margin-top:8px"></span><span class="skl" style="display:block;height:15px;width:44px;margin-top:6px"></span></div>
+                <div><span class="skl" style="display:block;height:96px;border-radius:10px"></span><span class="skl" style="display:block;height:13px;width:70%;margin-top:8px"></span><span class="skl" style="display:block;height:15px;width:44px;margin-top:6px"></span></div>
+                <div><span class="skl" style="display:block;height:96px;border-radius:10px"></span><span class="skl" style="display:block;height:13px;width:76%;margin-top:8px"></span><span class="skl" style="display:block;height:15px;width:44px;margin-top:6px"></span></div>
+                <div><span class="skl" style="display:block;height:96px;border-radius:10px"></span><span class="skl" style="display:block;height:13px;width:66%;margin-top:8px"></span><span class="skl" style="display:block;height:15px;width:44px;margin-top:6px"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tb">
+          <div class="t"><span class="gi"></span>点单</div><div class="t on"><span class="gi"></span>分类</div><div class="t"><span class="gi"></span>订单</div><div class="t"><span class="gi"></span>我的</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>分类页骨架</b>左栏 5 行 × 44px（真实分类行高），右栏 2 列网格，卡片图 96px + 两行文字。左栏宽度固定 92px，与真实一致——否则数据到达时右栏会横向位移。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">我的订单<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:12px 16px 0">
+            <div style="display:flex;gap:8px"><span class="skl" style="height:30px;width:74px;border-radius:999px"></span><span class="skl" style="height:30px;width:64px;border-radius:999px"></span><span class="skl" style="height:30px;width:68px;border-radius:999px"></span></div>
+          </div>
+          <div style="padding:12px 16px 0;display:flex;flex-direction:column;gap:11px">
+            <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+              <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px dashed var(--line-200)">
+                <span class="skl" style="height:18px;width:76px;border-radius:5px"></span><span class="skl" style="height:12px;width:46px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px;margin-left:auto"></span>
+              </div>
+              <div style="display:flex;gap:11px;align-items:center;padding-top:10px">
+                <span class="skl" style="width:34px;height:34px;border-radius:6px"></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:66%"></span><span class="skl" style="height:11px;width:40%"></span></div>
+                <span class="skl" style="height:15px;width:52px"></span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+              <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px dashed var(--line-200)">
+                <span class="skl" style="height:18px;width:76px;border-radius:5px"></span><span class="skl" style="height:12px;width:46px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px;margin-left:auto"></span>
+              </div>
+              <div style="display:flex;gap:11px;align-items:center;padding-top:10px">
+                <span class="skl" style="width:34px;height:34px;border-radius:6px"></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:58%"></span><span class="skl" style="height:11px;width:36%"></span></div>
+                <span class="skl" style="height:15px;width:52px"></span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+              <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px dashed var(--line-200)">
+                <span class="skl" style="height:18px;width:76px;border-radius:5px"></span><span class="skl" style="height:12px;width:46px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px;margin-left:auto"></span>
+              </div>
+              <div style="display:flex;gap:11px;align-items:center;padding-top:10px">
+                <span class="skl" style="width:34px;height:34px;border-radius:6px"></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:72%"></span><span class="skl" style="height:11px;width:44%"></span></div>
+                <span class="skl" style="height:15px;width:52px"></span>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px;display:flex;justify-content:center"><span class="skl" style="height:11px;width:88px"></span></div>
+        </div>
+        <div class="tb">
+          <div class="t"><span class="gi"></span>点单</div><div class="t"><span class="gi"></span>分类</div><div class="t on"><span class="gi"></span>订单</div><div class="t"><span class="gi"></span>我的</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>订单列表骨架</b>3 张订单卡（真实卡片高度）+ 底部"到底了"的替代骨架。卡片内的虚线分隔也要画出来，否则数据到达时会多出一像素的位移。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">订单详情<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:14px 16px 0">
+            <div style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:14px">
+              <span class="skl" style="display:block;height:18px;width:104px;margin-bottom:10px"></span>
+              <span class="skl" style="display:block;height:12px;width:150px"></span>
+            </div>
+          </div>
+          <div style="padding:12px 16px 0">
+            <div style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:13px 14px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+                <span class="skl" style="height:18px;width:76px;border-radius:5px"></span><span class="skl" style="height:13px;width:52px"></span>
+              </div>
+              <div style="display:flex;gap:10px;padding:8px 0"><span class="skl" style="width:44px;height:44px;border-radius:6px"></span><div style="flex:1;display:flex;flex-direction:column;gap:6px;justify-content:center"><span class="skl" style="height:13px;width:74%"></span><span class="skl" style="height:11px;width:34%"></span></div><span class="skl" style="height:13px;width:46px"></span></div>
+              <div style="display:flex;gap:10px;padding:8px 0"><span class="skl" style="width:44px;height:44px;border-radius:6px"></span><div style="flex:1;display:flex;flex-direction:column;gap:6px;justify-content:center"><span class="skl" style="height:13px;width:60%"></span><span class="skl" style="height:11px;width:30%"></span></div><span class="skl" style="height:13px;width:46px"></span></div>
+              <div style="height:0;border-top:1px dashed var(--line-200);margin:10px 0"></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="skl" style="height:12px;width:56px"></span><span class="skl" style="height:12px;width:52px"></span></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="skl" style="height:12px;width:44px"></span><span class="skl" style="height:12px;width:44px"></span></div>
+              <div style="display:flex;justify-content:space-between;padding:9px 0 3px;border-top:1px dashed var(--line-200);margin-top:6px"><span class="skl" style="height:15px;width:40px"></span><span class="skl" style="height:17px;width:66px"></span></div>
+            </div>
+          </div>
+          <div style="padding:12px 16px 0">
+            <div style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:0 14px">
+              <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--line-100)"><span class="skl" style="height:12px;width:52px"></span><span class="skl" style="height:12px;width:130px"></span></div>
+              <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--line-100)"><span class="skl" style="height:12px;width:52px"></span><span class="skl" style="height:12px;width:92px"></span></div>
+              <div style="display:flex;justify-content:space-between;padding:13px 0"><span class="skl" style="height:12px;width:52px"></span><span class="skl" style="height:12px;width:74px"></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>订单详情骨架</b>四段结构与真实页一致：状态卡 / 小票明细 / 键值信息 / 底部操作区。注意<b>合计行也要有骨架</b>——否则数据到达时会多出一行。</p>
+    </div>
+  </div>
+
+  <h3>2.2 商户端与网页端</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">配送清单<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:11px 12px 0"><span class="skl" style="display:block;height:36px;border-radius:10px"></span></div>
+          <div style="padding:12px 14px 0"><span class="skl" style="display:block;height:19px;width:86px;border-radius:999px"></span></div>
+          <div style="margin-top:9px">
+            <div class="drow" style="border-bottom:1px solid var(--line-100)"><span class="skl" style="width:26px;height:26px;border-radius:50%"></span><span class="skl" style="height:16px;width:48px"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:72%"></span><span class="skl" style="height:11px;width:46%"></span></span></div>
+            <div class="drow" style="border-bottom:1px solid var(--line-100)"><span class="skl" style="width:26px;height:26px;border-radius:50%"></span><span class="skl" style="height:16px;width:48px"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:64%"></span><span class="skl" style="height:11px;width:40%"></span></span></div>
+            <div class="drow" style="border-bottom:1px solid var(--line-100)"><span class="skl" style="width:26px;height:26px;border-radius:50%"></span><span class="skl" style="height:16px;width:48px"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:78%"></span><span class="skl" style="height:11px;width:52%"></span></span></div>
+          </div>
+          <div style="padding:14px 14px 0"><span class="skl" style="display:block;height:19px;width:74px;border-radius:999px"></span></div>
+          <div style="margin-top:9px">
+            <div class="drow" style="border-bottom:1px solid var(--line-100)"><span class="skl" style="width:26px;height:26px;border-radius:50%"></span><span class="skl" style="height:16px;width:48px"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:68%"></span><span class="skl" style="height:11px;width:44%"></span></span></div>
+            <div class="drow" style="border-bottom:1px solid var(--line-100)"><span class="skl" style="width:26px;height:26px;border-radius:50%"></span><span class="skl" style="height:16px;width:48px"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span class="skl" style="height:13px;width:60%"></span><span class="skl" style="height:11px;width:38%"></span></span></div>
+          </div>
+          <div style="padding:14px"><span class="skl" style="display:block;height:46px;border-radius:10px"></span></div>
+        </div>
+        <div class="tb"><div class="t on"><span class="gi"></span>配送</div><div class="t"><span class="gi"></span>库存</div><div class="t"><span class="gi"></span>我的</div></div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>配送清单骨架</b>保持 楼栋牌 → 楼层分组 → 配送行 的三层结构。<b>勾选圈也要画出来</b>，它占 26px 宽，漏掉会让房间号列横向位移。</p>
+    </div>
+    <div class="fr1" style="width:100%;max-width:660px">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/admin/stock-matrix</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq">张</span>张姐零食铺</div>
+            <a>工作台</a><a>楼栋与配送</a><a>商品管理</a><a class="on">库存矩阵</a><a>订单</a><a>账单</a><a>店铺设置</a>
+          </div>
+          <div class="wm">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <span class="skl" style="height:32px;width:180px;border-radius:8px"></span>
+              <span class="skl" style="height:32px;width:120px;border-radius:8px"></span>
+              <span class="skl" style="height:32px;width:96px;border-radius:8px;margin-left:auto"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+              <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px"><span class="skl" style="display:block;height:15px;width:80px;margin-bottom:9px"></span><span class="skl" style="display:block;height:12px;width:100%"></span><span class="skl" style="display:block;height:12px;width:70%;margin-top:7px"></span></div>
+              <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px"><span class="skl" style="display:block;height:15px;width:80px;margin-bottom:9px"></span><span class="skl" style="display:block;height:12px;width:100%"></span><span class="skl" style="display:block;height:12px;width:70%;margin-top:7px"></span></div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden">
+              <div style="display:flex;background:var(--paper);padding:10px 12px;gap:12px;border-bottom:1px solid var(--line-200)">
+                <span class="skl" style="height:13px;width:150px"></span><span class="skl" style="height:13px;width:76px"></span><span class="skl" style="height:13px;width:76px"></span><span class="skl" style="height:13px;width:76px"></span>
+              </div>
+              <div style="display:flex;padding:12px;gap:12px;border-bottom:1px solid var(--line-100)"><span class="skl" style="height:14px;width:150px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span></div>
+              <div style="display:flex;padding:12px;gap:12px;border-bottom:1px solid var(--line-100)"><span class="skl" style="height:14px;width:160px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span></div>
+              <div style="display:flex;padding:12px;gap:12px;border-bottom:1px solid var(--line-100)"><span class="skl" style="height:14px;width:140px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span></div>
+              <div style="display:flex;padding:12px;gap:12px"><span class="skl" style="height:14px;width:170px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span><span class="skl" style="height:22px;width:76px;border-radius:6px"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>库存矩阵骨架</b>最容易被漏掉的一个。<b>表头与列宽必须与真实矩阵一致</b>（商品列 150px、楼栋列各 76px），否则数据到达时整个表格会横跳。同时骨架也要画两张同步说明卡——它们占很大的垂直空间。</p>
+    </div>
+    <div class="fr1" style="width:100%;max-width:660px">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/platform/tenants</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq" style="background:var(--ink-900)">平</span>平台后台</div>
+            <a class="on">租户管理</a><a>上线流水线</a><a>版本发布</a><a>两道闸门</a><a>对账</a><a>监控</a><a>工单</a>
+          </div>
+          <div class="wm">
+            <div style="border:1px solid #C6DCF1;background:var(--info-bg);border-radius:10px;padding:13px 14px;margin-bottom:14px">
+              <span class="skl" style="display:block;height:14px;width:120px;margin-bottom:10px"></span>
+              <span class="skl" style="display:block;height:11px;width:92%"></span>
+              <span class="skl" style="display:block;height:11px;width:78%;margin-top:7px"></span>
+              <span class="skl" style="display:block;height:11px;width:85%;margin-top:7px"></span>
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:14px"><span class="skl" style="height:32px;width:160px;border-radius:8px"></span><span class="skl" style="height:32px;width:110px;border-radius:8px"></span><span class="skl" style="height:32px;width:110px;border-radius:8px"></span></div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden">
+              <div style="display:flex;background:var(--paper);padding:10px 12px;gap:10px;border-bottom:1px solid var(--line-200)">
+                <span class="skl" style="height:13px;width:110px"></span><span class="skl" style="height:13px;width:70px"></span><span class="skl" style="height:13px;width:56px"></span><span class="skl" style="height:13px;width:56px"></span><span class="skl" style="height:13px;width:64px"></span>
+              </div>
+              <div style="display:flex;padding:12px;gap:10px;border-bottom:1px solid var(--line-100);align-items:center"><span class="skl" style="height:14px;width:110px"></span><span class="skl" style="height:14px;width:70px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:14px;width:64px"></span></div>
+              <div style="display:flex;padding:12px;gap:10px;border-bottom:1px solid var(--line-100);align-items:center"><span class="skl" style="height:14px;width:96px"></span><span class="skl" style="height:14px;width:70px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:14px;width:64px"></span></div>
+              <div style="display:flex;padding:12px;gap:10px;align-items:center"><span class="skl" style="height:14px;width:120px"></span><span class="skl" style="height:14px;width:70px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:18px;width:56px;border-radius:5px"></span><span class="skl" style="height:14px;width:64px"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>租户列表骨架</b>注意最上面那块蓝色区域也画了骨架——那是 §B-16 的房间号隐私护栏卡。它固定在列表上方，所以骨架里必须预留它的位置。</p>
+    </div>
+  </div>
+
+  <h3>2.3 下拉刷新与上拉加载</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:375px;border:1px solid var(--line-200);border-radius:14px;padding:0;overflow:hidden;background:var(--surface)">
+        <div style="height:56px;background:var(--paper);display:flex;align-items:center;justify-content:center;gap:8px;border-bottom:1px solid var(--line-100)">
+          <span class="spin dk" style="width:14px;height:14px"></span><span style="font-size:12px;color:var(--ink-500)">正在刷新…</span>
+        </div>
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:9px">
+          <span class="skl" style="height:13px;width:70%"></span><span class="skl" style="height:13px;width:56%"></span><span class="skl" style="height:13px;width:64%"></span>
+        </div>
+      </div>
+      <p class="cap2"><b>下拉刷新</b>指示器 56px 高，文案在"下拉可刷新 → 松开刷新 → 正在刷新…"三态间切换。<b>最短停留 600ms</b>——即使数据瞬间返回，也要让用户看见"刷新过"这个事实。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:375px;border:1px solid var(--line-200);border-radius:14px;padding:0;overflow:hidden;background:var(--surface)">
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:9px">
+          <span class="skl" style="height:13px;width:70%"></span><span class="skl" style="height:13px;width:56%"></span><span class="skl" style="height:13px;width:64%"></span>
+        </div>
+        <div style="height:58px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid var(--line-100)">
+          <span class="spin dk" style="width:14px;height:14px"></span><span style="font-size:12px;color:var(--ink-500)">正在加载更多…</span>
+        </div>
+      </div>
+      <p class="cap2"><b>上拉加载更多</b>底部行内 loading，58px 高。<b>不用全屏、不清空已有内容。</b>已加载的内容必须保留在视口上方。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:375px;border:1px solid var(--line-200);border-radius:14px;padding:0;overflow:hidden;background:var(--surface)">
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:9px">
+          <span class="skl" style="height:13px;width:70%"></span><span class="skl" style="height:13px;width:56%"></span>
+        </div>
+        <div style="height:58px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid var(--line-100)">
+          <span style="font-size:12px;color:var(--ink-400)">— 已经到底了，共 27 条 —</span>
+        </div>
+        <div style="height:58px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid var(--line-100);background:var(--line-100)">
+          <span style="font-size:12px;color:var(--danger);font-weight:500">网络不太好，点击重试</span>
+        </div>
+      </div>
+      <p class="cap2"><b>到底 / 加载失败</b>两种尾部状态都必须设计。「已经到底了，共 27 条」给总数，让用户知道没有漏掉内容。加载失败时<b>保留已加载内容</b>，只在尾部提示可点击重试。</p>
+    </div>
+  </div>
+
+  <table class="cs">
+    <tr><th style="width:20%">页面</th><th style="width:26%">骨架结构（必须一致）</th><th>易错点</th></tr>
+    <tr><td>学生端首页</td><td class="m">楼栋牌 44 · 时间条 62 · 分类锚点 32 · 商品行 ×3 · 吸底条 46</td><td>漏掉时间条 → 数据到达时整页下移 62px</td></tr>
+    <tr><td>分类页</td><td class="m">楼栋牌 44 · 左栏 92px × 5 行 44px · 右栏 2 列网格</td><td>左栏宽度写错 → 右栏横向位移</td></tr>
+    <tr><td>订单列表</td><td class="m">筛选 Chip 30 · 订单卡 ×3 · 底部 40</td><td>卡片内虚线分隔漏画 → 一像素位移</td></tr>
+    <tr><td>订单详情</td><td class="m">状态卡 · 小票明细（含合计行） · 键值卡 · 底部操作区</td><td>漏合计行 → 数据到达时多出一行</td></tr>
+    <tr><td>配送清单</td><td class="m">楼栋牌 36 · 楼层头 19 · 配送行 ×3（含 26px 勾选圈）</td><td>漏勾选圈 → 房间号列位移 37px</td></tr>
+    <tr><td>商户端库存快改</td><td class="m">商品行 ×4（含 72px 缩略图 + 一排 4 个库存格）</td><td>库存格数量写死为 3 → 4 栋商户会跳版。需按实际楼栋数渲染</td></tr>
+    <tr><td>库存矩阵</td><td class="m">筛选栏 32 · 两张同步卡 · 表头 + 5 行</td><td>表头与列宽不一致 → 整表横跳</td></tr>
+    <tr><td>租户列表</td><td class="m">隐私护栏卡 · 筛选栏 32 · 表头 + 4 行</td><td>漏护栏卡 → 列表整体上移</td></tr>
+  </table>
+</section>
+
+<!-- ============ 03 进度与长任务 ============ -->
+<section id="b3">
+  <h2><span class="num">03</span>进度与长任务</h2>
+  <p class="sub">凡是超过 3 秒的操作，都必须回答三个问题：<b>在做什么、做到哪了、能不能离开</b>。本产品有 5 个长任务。</p>
+
+  <h3>3.1 批量推送（37 个租户，约 10 分钟）</h3>
+  <div class="frames">
+    <div class="fr1" style="width:100%;max-width:640px">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/platform/release</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq" style="background:var(--ink-900)">平</span>平台后台</div>
+            <a>租户管理</a><a>上线流水线</a><a class="on">版本发布</a><a>两道闸门</a><a>对账</a>
+          </div>
+          <div class="wm">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+              <span style="font-size:15px;font-weight:600">发布 v1.4.0</span>
+              <span class="tg warn">进行中</span>
+              <span class="mini" style="margin-left:auto">可以离开这个页面，推送会在后台继续</span>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;padding:15px 16px;margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+                <span style="font-size:13px">正在推送第 14 / 37 个租户</span>
+                <span class="mono" style="font-size:17px;font-weight:600">38%</span>
+              </div>
+              <div class="pg"><i style="width:38%"></i></div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px">
+                <div><div class="mini">已完成</div><div class="mono" style="font-size:16px;font-weight:600;color:var(--ok)">13</div></div>
+                <div><div class="mini">进行中</div><div class="mono" style="font-size:16px;font-weight:600;color:var(--warn)">1</div></div>
+                <div><div class="mini">待推送</div><div class="mono" style="font-size:16px;font-weight:600;color:var(--ink-400)">23</div></div>
+                <div><div class="mini">失败</div><div class="mono" style="font-size:16px;font-weight:600;color:var(--danger)">0</div></div>
+              </div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden">
+              <div style="padding:9px 12px;background:var(--paper);font-size:11.5px;color:var(--ink-500);border-bottom:1px solid var(--line-200)">实时日志</div>
+              <div style="max-height:170px;overflow:auto;font-family:var(--mono);font-size:11px;line-height:1.95;padding:11px 12px">
+                <div style="color:var(--ok)">[14:22:07] 张姐零食铺 ✓ 推送成功</div>
+                <div style="color:var(--ok)">[14:22:01] 李叔便利店 ✓ 推送成功</div>
+                <div style="color:var(--warn)">[14:21:52] 王姐食品 进行中…</div>
+                <div style="color:var(--ok)">[14:21:44] 赵记小吃 ✓ 推送成功</div>
+                <div style="color:var(--ink-500)">[14:21:30] 灰度验证组 2 家 ✓ 无异常，开始批量</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>批量推送</b>四段式：总进度 + 四类计数 + 实时日志 + 可离开声明。<b>"可以离开"这句话必须写出来</b>，否则运营会盯着屏幕 10 分钟。日志用等宽字体，失败行用红、进行中用琥珀。</p>
+    </div>
+  </div>
+
+  <h3>3.2 Excel 批量导入（4 步闭环）</h3>
+  <div class="frames">
+    <div class="fr1" style="width:100%;max-width:1000px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:14px">
+        <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);padding:14px">
+          <div class="mini mono" style="margin-bottom:8px">STEP 1 / 4</div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">下载模板</div>
+          <div style="border:1.5px dashed var(--brand-300);background:var(--brand-50);border-radius:10px;padding:18px;text-align:center;color:var(--brand-700)">
+            <svg class="ic" style="width:24px;height:24px;margin:0 auto 8px;color:var(--brand-600)" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M4 19h16"/></svg>
+            <div style="font-size:12.5px;font-weight:600">下载导入模板.xlsx</div>
+            <div style="font-size:10.5px;margin-top:5px;opacity:.85">含「商品 / 价格 / 分类 / 各楼栋库存」列</div>
+          </div>
+          <div class="mini" style="margin-top:9px">模板已预填 1 行示例并冻结首行，降低格式错误率</div>
+        </div>
+        <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);padding:14px">
+          <div class="mini mono" style="margin-bottom:8px">STEP 2 / 4</div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">上传文件</div>
+          <div style="border:1.5px dashed var(--line-200);border-radius:10px;padding:18px;text-align:center;background:var(--paper)">
+            <div style="font-size:12.5px;font-weight:500">拖拽文件到此处</div>
+            <div style="font-size:10.5px;color:var(--ink-400);margin-top:5px">或点击选择 · 仅支持 .xlsx，最大 5MB</div>
+          </div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:11.5px;border:1px solid var(--line-200);border-radius:8px;padding:8px 10px">
+            <svg class="ic" style="width:15px;height:15px;color:var(--ok)" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>
+            <span style="flex:1" class="mono">商品清单_2026秋.xlsx</span><span class="mini">186 KB</span>
+          </div>
+        </div>
+        <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);padding:14px">
+          <div class="mini mono" style="margin-bottom:8px">STEP 3 / 4</div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">校验</div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0"><span class="spin dk" style="width:15px;height:15px"></span><span style="font-size:12.5px">正在逐行校验… 128 / 240</span></div>
+          <div class="pg" style="margin-top:6px"><i style="width:53%"></i></div>
+          <div class="mini" style="margin-top:11px;line-height:1.8">校验项：价格格式 · 分类是否存在 · 楼栋列是否匹配 · 重复商品名<br>
+            <b style="color:var(--warn)">已发现 3 行有问题</b>（校验完成后会列出）</div>
+        </div>
+        <div style="border:1px solid #EFD9B4;border-radius:10px;background:var(--warn-bg);padding:14px">
+          <div class="mini mono" style="margin-bottom:8px;color:#7A3E05">STEP 4 / 4</div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px;color:#7A3E05">校验结果 · 3 行需修正</div>
+          <div style="font-size:11.5px;color:#7A3E05;line-height:1.85">
+            <div style="display:flex;gap:8px;padding:2px 0"><span class="mono">第 12 行</span><span>价格「7.5元」格式错误，应为数字</span></div>
+            <div style="display:flex;gap:8px;padding:2px 0"><span class="mono">第 47 行</span><span>分类「洋芋片」不存在，请先创建</span></div>
+            <div style="display:flex;gap:8px;padding:2px 0"><span class="mono">第 88 行</span><span>与第 12 行商品名重复</span></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:11px">
+            <span class="b b-sm b-sec">下载错误行</span>
+            <span class="b b-sm b-pri">跳过这 3 行，导入 237 行</span>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>Excel 导入四步</b>：<b>下载模板 → 上传 → 校验 → 结果</b>。关键设计：① 模板预填示例并冻结首行；② 校验是<b>独立一步</b>而非上传后直接导入；③ 结果页给出<b>行号 + 人话原因 + 修复建议</b>，并提供「下载错误行」与「跳过继续导入」两条出路。禁止只说"文件格式错误"。</p>
+    </div>
+  </div>
+
+  <h3>3.3 全屏阻塞 loading（仅 2 处）</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:375px;height:340px;border:1px solid var(--line-200);border-radius:14px;overflow:hidden;position:relative;background:var(--surface)">
+        <div style="padding:16px;opacity:.35">
+          <span class="skl" style="display:block;height:44px;border-radius:10px"></span>
+          <span class="skl" style="display:block;height:60px;border-radius:10px;margin-top:10px"></span>
+          <span class="skl" style="display:block;height:96px;border-radius:10px;margin-top:12px"></span>
+        </div>
+        <div style="position:absolute;inset:0;background:rgba(28,25,23,.45);display:flex;align-items:center;justify-content:center">
+          <div style="background:var(--surface);border-radius:14px;padding:22px 26px;text-align:center;box-shadow:var(--s2)">
+            <span class="spin dk" style="width:22px;height:22px;display:block;margin:0 auto 12px;border-width:2.4px"></span>
+            <div style="font-size:14px;font-weight:600">正在提交订单…</div>
+            <div style="font-size:11.5px;color:var(--ink-400);margin-top:6px">请稍候，不要关闭页面</div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>全屏阻塞（第 1 处：提交订单）</b>遮罩 45% + 居中卡片。<b>必须写"不要关闭页面"</b>。仅用于"提交已发出、结果未知、下一步动作取决于结果"的场合。本产品只有「提交订单」与「发起支付」两处需要它。</p>
+    </div>
+    <div class="fr1" style="width:100%;max-width:560px">
+      <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);overflow:hidden">
+        <div style="padding:13px 14px;border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:9px">
+          <span style="font-size:13.5px;font-weight:600">2026-09 账单</span><span class="tg warn">生成中</span>
+        </div>
+        <div style="padding:14px">
+          <div style="display:flex;align-items:center;gap:11px">
+            <span class="spin dk" style="width:16px;height:16px"></span>
+            <span style="flex:1;font-size:12.5px">正在汇总 37 个租户的订单与流水…</span>
+            <span class="mono" style="font-size:12.5px;color:var(--ink-500)">21 / 37</span>
+          </div>
+          <div class="pg" style="margin-top:10px"><i style="width:57%"></i></div>
+          <div class="mini" style="margin-top:10px">生成完成后会出现在下方历史账单中，可以离开这个页面</div>
+        </div>
+      </div>
+      <p class="cap2"><b>表格内行内进度（第 2 处：账单生成）</b>不用弹窗阻塞，而是在表格行内显示进度。运营可以继续翻其他页。<b>关键是"可以离开"这句声明</b>。</p>
+    </div>
+  </div>
+
+  <table class="cs">
+    <tr><th style="width:18%">长任务</th><th style="width:18%">时长</th><th style="width:20%">展示方式</th><th>能否离开 / 失败处理</th></tr>
+    <tr><td>批量推送代码</td><td class="m">约 10 分钟</td><td>进度条 + 四类计数 + 实时日志</td><td><b>可离开</b>，后台继续。失败逐条列出原因（密钥失效 / IP 未白名单 / 类目变更），支持单条重推</td></tr>
+    <tr><td>Excel 批量导入</td><td class="m">3–30 秒</td><td>四步向导，第三步显示校验进度</td><td><b>不可离开</b>（需要用户处理错误行）。失败按行号列出并允许下载错误行</td></tr>
+    <tr><td>每日扣费任务</td><td class="m">后台定时</td><td>商户端只看结果（账本流水）</td><td>失败则平台侧告警 + 该租户标记「未扣」，对账表差额列标红</td></tr>
+    <tr><td>账单生成</td><td class="m">10–60 秒</td><td>表格行内进度</td><td><b>可离开</b>，完成后出现在历史列表</td></tr>
+    <tr><td>送达凭证上传（B4）</td><td class="m">1–5 秒/张</td><td>缩略图位置显示进度环</td><td>失败可单独重传，不影响其他图</td></tr>
+  </table>
+</section>
+
+<!-- ============ 04 空状态 ============ -->
+<section id="b4">
+  <h2><span class="num">04</span>空状态（12 种）</h2>
+  <p class="sub">空状态是"用户第一次面对产品"的最高频场景。<b>每个空状态必须同时具备：说明为什么空 + 一个可点的下一动作</b>（AC-07）。禁止只放插画和"暂无数据"。</p>
+
+  <div class="note warn"><b>本产品空状态的特殊性：</b>大部分"空"不是用户的问题，而是<b>系统状态</b>造成的——该楼栋没上架、今天已截单、还没营业。这类空状态必须<b>解释系统为什么空</b>，否则学生第一反应是"这个店是不是坏了"，商户第一反应是"系统出错了"。<b>「本店暂未覆盖」比「暂无楼栋」多给了用户一份"这不是我操作错了"的确认。</b></div>
+
+  <h3>4.1 学生端 5 种</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M3 5h2l2.2 10.2a1.6 1.6 0 0 0 1.6 1.3h7.8a1.6 1.6 0 0 0 1.6-1.3L20 8H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">购物车还是空的</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">从下面的商品里挑几样吧<br>满 ¥15 起送</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--brand-500);color:#fff;border-radius:10px;padding:11px 24px;font-size:13.5px;font-weight:600">去逛逛</span></div>
+      </div>
+      <p class="cap2"><b>① 购物车为空</b>（在购物车抽屉内）说明 + 起送门槛 + 「去逛逛」。注意：<b>吸底购物车条此时不显示</b>，所以这个空态只在用户主动打开抽屉时出现。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 7h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7z"/><path d="M8 7V5.5a4 4 0 0 1 8 0V7"/><path d="M9 12h6"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">还没有点过单</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">下一单试试，满 ¥15 送到宿舍房间</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--brand-500);color:#fff;border-radius:10px;padding:11px 24px;font-size:13.5px;font-weight:600">去点单</span></div>
+      </div>
+      <p class="cap2"><b>② 订单列表为空（从未下单）</b>用品牌色而非灰色图标——这是"邀请"而不是"失败"。文案给出门槛信息（满 ¥15 送到房间），让用户知道这一步很轻。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 7h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7z"/><path d="M8 7V5.5a4 4 0 0 1 8 0V7"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">这里还没有订单</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">「配送中」下有 2 个订单</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 20px;font-size:13px">查看配送中</span></div>
+      </div>
+      <p class="cap2"><b>③ 筛选结果为空（订单有，但这个状态没有）</b><b>关键：必须告诉用户"订单在别处"。</b>只写"暂无订单"会让学生以为订单丢了。「配送中下有 2 个订单」+ 直达按钮，消除了这个误会。</p>
+    </div>
+  </div>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">这栋楼今天没有可卖的</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">1 号宿舍楼的商品还没上架<br>可以看看其他楼栋</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 20px;font-size:13px">切换楼栋</span></div>
+      </div>
+      <p class="cap2"><b>④ 该楼栋商品全未上架</b>必须在文案里点明是<b>哪个楼栋</b>、以及<b>这是系统状态而非他的问题</b>。给"切换楼栋"作为唯一出路。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">没有找到「薯条」</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">试试搜「薯片」或「膨化」<br>本店共 38 个商品</div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 16px;font-size:12.5px">搜「薯片」</span>
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 16px;font-size:12.5px">看看热销</span>
+        </div>
+      </div>
+      <p class="cap2"><b>⑤ 搜索无结果</b>必须包含三件事：<b>回显用户搜的词</b>（"薯条"）+ <b>给出可点的相近词</b> + <b>本店商品总数</b>。第三项让用户判断"是我搜错了还是店里真没有"。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">本店暂未覆盖你的楼栋</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">我们目前只送 1、2、3 号宿舍楼<br>其他楼栋正在陆续开通</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 20px;font-size:13px">联系店家</span></div>
+      </div>
+      <p class="cap2"><b>⑥ 楼栋不在覆盖范围（S6）</b>三要素：<b>明确说"我们覆盖哪几栋"</b>（让用户确认确实没自己）+ <b>给出预期</b>（正在陆续开通）+ 提供联系入口。<b>禁止</b>只写"暂无可用楼栋"。</p>
+    </div>
+  </div>
+
+  <h3>4.2 商户端 4 种</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">全部送完了</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">今天 27 单已全部送达<br>今天营收 <span class="mono" style="color:var(--ink-900);font-weight:600">¥412.50</span></div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 20px;font-size:13px">查看今日订单</span></div>
+      </div>
+      <p class="cap2"><b>⑦ 配送清单为空</b><b>唯一用 ok 色的空状态</b>——"没有待送订单"是好事，不是问题。附上今日营收作为正向反馈，给"查看今日订单"作为下一步。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">还没有添加楼栋</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">添加你负责配送的宿舍楼后，<br>学生就能选到这栋楼下单</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--brand-500);color:#fff;border-radius:10px;padding:11px 22px;font-size:13.5px;font-weight:600">添加楼栋</span></div>
+      </div>
+      <p class="cap2"><b>⑧ 楼栋列表为空</b>说明<b>添加楼栋会带来什么</b>（学生能选到这栋楼），而不是说"请添加楼栋"。说清收益，商户才知道为什么要做这件事。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h9"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">还没有商品</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">先建几个商品，再给各楼栋分配库存。<br>也可以从 Excel 一次导入</div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
+          <span style="background:var(--brand-500);color:#fff;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:600">新建商品</span>
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 18px;font-size:13px">Excel 导入</span>
+        </div>
+      </div>
+      <p class="cap2"><b>⑨ 商品/库存矩阵为空</b>给两条路：<b>逐个建</b>或<b>批量导入</b>。<b>关键：说清顺序</b>（先建商品，再分配库存）——这是张姐最容易搞混的地方。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:32px 22px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M8 15h3"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">还没有账单明细</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">产生第一笔订单后，<br>2% 的服务费会自动记在这里</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 20px;font-size:13px">查看订阅与余额</span></div>
+      </div>
+      <p class="cap2"><b>⑩ 账本明细为空</b>必须解释<b>明细是怎么产生的</b>（产生订单后按 2% 自动记录），否则商户会以为扣费功能坏了。</p>
+    </div>
+  </div>
+
+  <h3>4.3 平台后台 2 种</h3>
+  <div class="frames">
+    <div class="fr1" style="width:100%;max-width:520px">
+      <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);padding:34px 24px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 20V9.5L12 4l8 5.5V20"/><path d="M9.5 20v-6h5v6"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">还没有租户</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">创建第一个租户后，这里会显示它的订阅与余额状态。<br>系统的全部信息都在这一页。</div>
+        <div style="margin-top:16px"><span style="display:inline-block;background:var(--brand-500);color:#fff;border-radius:10px;padding:11px 24px;font-size:13.5px;font-weight:600">创建租户</span></div>
+      </div>
+      <p class="cap2"><b>⑪ 租户列表为空</b>（首次使用）说明这一页的作用，并给出唯一的起始动作。</p>
+    </div>
+    <div class="fr1" style="width:100%;max-width:520px">
+      <div style="border:1px solid var(--line-200);border-radius:10px;background:var(--surface);padding:34px 24px;text-align:center">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg class="ic" style="width:25px;height:25px" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">2026-09 还没有产生扣费</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.75">本月 3 个租户均无支付成功的订单。<br>账单会在每日定时任务后更新。</div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 18px;font-size:13px">查看上月账单</span>
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:10px 18px;font-size:13px">查看扣费任务</span>
+        </div>
+      </div>
+      <p class="cap2"><b>⑫ 当期账单为空</b>必须说明<b>为什么为空</b>（无支付成功订单）+ <b>什么时候会更新</b>（每日定时任务后）。运营看到"空"的第一反应是任务挂了，这句话直接排除了这个疑虑。</p>
+    </div>
+  </div>
+
+  <table class="cs">
+    <tr><th style="width:22%">空状态</th><th style="width:22%">为什么空（必须说出来）</th><th>下一步动作（必须可点）</th></tr>
+    <tr><td>购物车为空</td><td>还没有加购</td><td>去逛逛</td></tr>
+    <tr><td>订单列表为空</td><td>从未下过单</td><td>去点单</td></tr>
+    <tr><td>筛选结果为空</td><td><b>订单在其他状态里</b>（给出数量）</td><td>查看对应状态</td></tr>
+    <tr><td>楼栋商品全未上架</td><td><b>该楼栋商品还没上架</b>（点明楼栋名）</td><td>切换楼栋</td></tr>
+    <tr><td>搜索无结果</td><td>关键词不匹配（回显词 + 商品总数）</td><td>相近词 / 看热销</td></tr>
+    <tr><td>楼栋不在覆盖范围</td><td><b>本店只覆盖 N 栋</b>（列出覆盖范围）</td><td>联系店家</td></tr>
+    <tr><td>配送清单为空</td><td><b>全部送完了</b>（正向，ok 色）</td><td>查看今日订单</td></tr>
+    <tr><td>楼栋列表为空</td><td>还没添加楼栋（说明添加后的收益）</td><td>添加楼栋</td></tr>
+    <tr><td>商品/矩阵为空</td><td>还没建商品（说清建商品与配库存的顺序）</td><td>新建商品 / Excel 导入</td></tr>
+    <tr><td>账本明细为空</td><td>还没产生订单（说明扣费是怎么产生的）</td><td>查看订阅与余额</td></tr>
+    <tr><td>租户列表为空</td><td>还没创建租户（说明这一页的作用）</td><td>创建租户</td></tr>
+    <tr><td>当期账单为空</td><td><b>本月无支付成功订单</b>（说明更新时间）</td><td>查看上月账单 / 扣费任务</td></tr>
+  </table>
+</section>
+
+<!-- ============ 05 错误与网络 ============ -->
+<section id="b5">
+  <h2><span class="num">05</span>错误与网络态</h2>
+  <p class="sub">错误处理的原则只有一条：<b>让用户知道发生了什么、以及他还能做什么</b>。做不到这两点，就等于把问题丢给了客服。</p>
+
+  <div class="note dan"><b>AC-12 全局文字审查：</b>以下文案<b>不得单独出现</b>——「操作失败」「系统错误」「未知异常」「请稍后重试」「网络异常」「请求失败」。每处错误必须是<b>原因 + 下一步</b>的结构。实现完成后用全文检索逐条核对。</div>
+
+  <h3>5.1 页面级加载失败</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:44px 24px;text-align:center">
+        <div style="width:58px;height:58px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;margin:0 auto 15px">
+          <svg class="ic" style="width:26px;height:26px" viewBox="0 0 24 24"><path d="M12 4.5L21 20H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:7px">商品没能加载出来</div>
+        <div style="font-size:12px;color:var(--ink-500);line-height:1.8">可能是网络不稳定。<br>你选好的「1 号宿舍楼」已经记住了。</div>
+        <div style="margin-top:18px;display:flex;flex-direction:column;gap:9px">
+          <span style="background:var(--brand-500);color:#fff;border-radius:10px;padding:12px 0;font-size:13.5px;font-weight:600">重新加载</span>
+          <span style="background:var(--surface);border:1px solid var(--line-200);border-radius:10px;padding:11px 0;font-size:13px">联系店家</span>
+        </div>
+      </div>
+      <p class="cap2"><b>① 页面级失败</b>三要素：<b>说清哪部分失败</b>（"商品"而不是"页面"）+ <b>可能的客观原因</b>（网络）+ <b>哪些状态被保留了</b>（选好的楼栋）。第三点很关键——用户最怕的是"重来一次要重新选楼栋"。</p>
+    </div>
+    <div class="fr1">
+      <div style="width:330px;border:1px solid var(--line-200);border-radius:14px;background:var(--surface);padding:0;overflow:hidden">
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:9px">
+          <span class="skl" style="height:44px;border-radius:10px"></span>
+        </div>
+        <div style="margin:0 16px;border:1px solid #EFD9B4;background:var(--warn-bg);border-radius:10px;padding:16px 14px;display:flex;gap:11px;align-items:flex-start">
+          <svg class="ic" style="width:18px;height:18px;color:var(--warn);flex:none;margin-top:1px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h.01"/></svg>
+          <div style="flex:1">
+            <div style="font-size:12.5px;font-weight:600;color:var(--warn);margin-bottom:4px">这些商品没加载出来</div>
+            <div style="font-size:11.5px;color:#7A3E05;line-height:1.7">已显示的可以直接下单。缺失的 6 个商品可以单独重试。</div>
+            <div style="margin-top:9px"><span class="b b-sm b-sec">只重试这部分</span></div>
+          </div>
+        </div>
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:9px">
+          <span class="skl" style="height:72px;border-radius:10px"></span>
+          <span class="skl" style="height:72px;border-radius:10px"></span>
+        </div>
+      </div>
+      <p class="cap2"><b>② 局部失败（最重要的一个）</b>部分接口失败时<b>不能把整页判为失败</b>。已经拿到的内容继续可用，失败的区块单独提示并可单独重试。<b>「已显示的可以直接下单」这句话必须写</b>——否则用户会以为整页都不安全而离开。</p>
+    </div>
+  </div>
+
+  <h3>5.2 网络横幅（最高优先级，任何情况下可见）</h3>
+  <div class="frames">
+    <div class="fr1" style="width:100%;max-width:520px">
+      <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden;background:var(--surface)">
+        <div style="height:26px;background:var(--off-bg);display:flex;align-items:center;justify-content:center;gap:7px;font-size:11.5px;color:var(--off)">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--off)"></span>网络已断开，已改为离线浏览
+        </div>
+        <div style="height:26px;background:var(--warn-bg);display:flex;align-items:center;justify-content:center;gap:7px;font-size:11.5px;color:var(--warn);border-top:1px solid #EFD9B4">
+          <span class="spin" style="width:10px;height:10px;border-width:1.4px;border-color:#EFD9B4;border-top-color:var(--warn)"></span>网络较弱，正在重试（第 2 次）
+        </div>
+        <div style="height:26px;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;gap:7px;font-size:11.5px;color:var(--ok);border-top:1px solid #C9E6D4">
+          <svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>已恢复连接
+        </div>
+        <div style="padding:14px;font-size:12px;color:var(--ink-400);line-height:1.75">三种状态：<b>断网（灰）</b>→ <b>弱网重试（琥珀，带次数）</b>→ <b>已恢复（绿，2 秒后自动消失）</b>。位置在导航栏下方，高 26px，<b>不遮挡任何操作</b>。</div>
+      </div>
+      <p class="cap2"><b>网络横幅</b>优先级 z-80。<b>绝不"清空页面"</b>——断网时页面内容保持可见，只是不能提交。恢复后显示 2 秒绿色条再消失，给用户一个"刚才那个问题解决了"的确认。</p>
+    </div>
+  </div>
+
+  <h3>5.3 业务错误（服务端拒绝的 6 种）</h3>
+  <p class="sub">业务错误<b>不是系统故障</b>，而是"当前条件下这个动作不成立"。它们必须写在触发位置，并给出替代路径。</p>
+  <table class="cs">
+    <tr><th style="width:16%">场景</th><th style="width:26%">触发现象</th><th style="width:28%">提示位置</th><th>文案与替代路径</th></tr>
+    <tr><td><b>库存不足</b></td><td>提交订单时原子预占影响行数为 0（被超卖）</td><td>结算页顶部 + 对应商品行标红</td><td>「冰红茶 500ml 在 1 号宿舍楼已售罄，请移出后重新提交」+ 商品行内「移出」按钮。<b>保留其他商品不丢失</b></td></tr>
+    <tr><td><b>已截单</b></td><td>提交时已过 cutoff_time</td><td>结算页整页替换为截单状态</td><td>「今天送到这儿了。明天 06:30 可再次下单」+ 保留购物车（不清空）</td></tr>
+    <tr><td><b>本栋已停送</b></td><td>提交时该楼栋 delivery_enabled = false</td><td>结算页整页替换为停送状态</td><td>「本栋今日已停送，库存已保留」+ 「送到别的楼栋」（触发购物车清空确认）</td></tr>
+    <tr><td><b>跨楼栋</b></td><td>地址楼栋 ≠ 购物车楼栋</td><td>地址区域标红 + 底部按钮禁用并说明</td><td>「当前购物车商品属于 1 号宿舍楼，无法配送到 2 号宿舍楼」+ 「改送到 1 号宿舍楼」</td></tr>
+    <tr><td><b>余额/订阅锁单</b></td><td>下单时商户两道闸门被触发</td><td>学生端整页状态（对商户则显示在商户端）</td><td>学生看到：「店家暂时休息中，明天再来看看」——<b>绝不向学生暴露"欠费"这类商户经营信息</b></td></tr>
+    <tr><td><b>超出加购上限</b></td><td>加购数量 &gt; 该楼栋 stock</td><td>步进器 + 旁注</td><td>「本栋仅剩 24 件」+ <code>+</code> 置灰（见 A-04）</td></tr>
+  </table>
+  <div class="note warn"><b>业务错误的第一原则：不要让用户丢数据。</b>库存不足时购物车其余商品必须保留；已截单时购物车整体保留；跨楼栋时商品保留只拦提交。<b>任何"清空购物车再告诉你不行"的实现都是错的。</b></div>
+
+  <h3>5.4 文案对照表（实现时逐条替换）</h3>
+  <table class="cs">
+    <tr><th style="width:34%">✕ 禁止出现</th><th style="width:34%">✓ 应改为</th><th>为什么</th></tr>
+    <tr><td>操作失败</td><td>商品没能加载出来，可能是网络不稳定</td><td>必须说清是哪件事、什么原因</td></tr>
+    <tr><td>系统错误，请稍后重试</td><td>订单提交没成功，你的购物车还在。可以再试一次</td><td>必须说清数据是否保留</td></tr>
+    <tr><td>库存不足</td><td>冰红茶 500ml 在 1 号宿舍楼已售罄，请移出后重新提交</td><td>必须说清是哪个商品、哪栋楼</td></tr>
+    <tr><td>请求超时</td><td>网络有点慢，正在重试（第 2 次）</td><td>说明系统已在自动处理，不必手动干预</td></tr>
+    <tr><td>登录已过期</td><td>需要重新打开小程序才能继续</td><td>用户不知道"登录"指什么</td></tr>
+    <tr><td>该楼栋不可用</td><td>3 号宿舍楼今日已停送，明天恢复</td><td>必须点明楼栋与恢复时间</td></tr>
+    <tr><td>余额不足，请充值</td><td>余额已用完，充值后立即恢复接单</td><td>不能只给要求，必须给"恢复条件"</td></tr>
+    <tr><td>店铺已欠费</td><td>本学期服务期已结束，续费后即可继续接单</td><td>「欠费」会激怒商户；用中性词</td></tr>
+    <tr><td>文件格式错误</td><td>第 12 行价格「7.5元」不是数字，请改为 7.5</td><td>必须给行号与具体修复方式</td></tr>
+    <tr><td>导入失败</td><td>3 行需修正，其余 237 行可先导入</td><td>给出"能做什么"而不是"不能做什么"</td></tr>
+  </table>
+</section>
+
+<!-- ============ 06 状态语言 ============ -->
+<section id="b6">
+  <h2><span class="num">06</span>状态语言总表</h2>
+  <p class="sub">全产品的状态只有这 7 组。<b>每一组状态在四端使用完全相同的 Tag 颜色、图标与文案</b>。这张表是一致性最直接的检查清单。</p>
+
+  <h3>6.1 订单状态（7 态 · 三端共用）</h3>
+  <table class="cs">
+    <tr><th style="width:12%">状态</th><th style="width:10%">Tag</th><th style="width:22%">学生端文案</th><th style="width:22%">商户端文案</th><th>进入 / 离开条件</th></tr>
+    <tr><td><b>待付款</b></td><td><span class="tg warn">待付款</span></td><td>「已下单，等待支付」+ 立即支付</td><td>不显示（不进配送清单）</td><td>下单预占库存成功 → 支付成功 / 超时 15 分钟自动关单（释放库存）</td></tr>
+    <tr><td><b>待接单</b></td><td><span class="tg dan">待接单</span></td><td>「已下单，等待店家接单」</td><td>「待接单 · N 分钟前」+ 接单按钮</td><td>支付成功 → 商户点「接单」</td></tr>
+    <tr><td><b>配送中</b></td><td><span class="tg info">配送中</span></td><td>「店家在送，约 10 分钟」</td><td>进入配送清单，按楼层排序</td><td>接单 → 商户标记「已送达」</td></tr>
+    <tr><td><b>已送达</b></td><td><span class="tg ok">已送达</span></td><td>「已送到 302 室门口 · 21:32」+ 再下一单</td><td>归档；进入当日营收</td><td>商户标记送达 → 送达后 N 小时自动完成兜底。</td></tr>
+    <tr><td><b>已取消</b></td><td><span class="tg off">已取消</span></td><td>「订单已取消，款项已原路退回」</td><td>—</td><td>待付款超时 / 待接单时学生取消 → 释放 locked 库存</td></tr>
+    <tr><td><b>退款中</b></td><td><span class="tg warn">退款中</span></td><td>「退款处理中，预计 1–3 分钟」</td><td>「待处理退款」+ 处理按钮</td><td>发起退款 → 商户处理 / 平台仲裁</td></tr>
+    <tr><td><b>已退款</b></td><td><span class="tg off">已退款</span></td><td>「已退款 ¥19.00」+ 再下一单</td><td>—</td><td>退款成功 → 服务费返还；未送达则回库</td></tr>
+  </table>
+  <div class="note"><b>终态是「已送达」，不是「已完成」。</b>商户标记送达即闭环（D15），学生端<b>没有确认收货</b>。系统内部可以有"自动完成"的兜底状态，但界面上对学生统一显示「已送达」——多一个状态只会让学生困惑"我要不要点一下"。</div>
+
+  <h3>6.2 楼栋状态（4 态 · 学生端看到 3 种）</h3>
+  <table class="cs">
+    <tr><th style="width:14%">状态</th><th style="width:12%">视觉</th><th style="width:24%">学生端表现</th><th>数据条件</th></tr>
+    <tr><td><b>正常配送</b></td><td>brand 实心牌</td><td>可浏览、可下单</td><td class="m">status=启用 且 delivery_enabled=true</td></tr>
+    <tr><td><b>今日停送</b></td><td>灰牌 + 「今日已停送」</td><td>可选到、可见库存，但不可下单；给"送到别的楼栋"</td><td class="m">status=启用 且 delivery_enabled=false</td></tr>
+    <tr><td><b>已停用</b></td><td><b>不出现在学生端</b></td><td>选择抽屉里完全不出现；已在旧页面的学生下次请求返回"该楼栋已停送"并引导重选</td><td class="m">status=停用</td></tr>
+    <tr><td><b>单楼栋降级</b></td><td>牌面无 chevron</td><td>隐藏楼栋选择器，显示「本店配送 · 仅此一栋」</td><td class="m">有效楼栋数 = 1</td></tr>
+  </table>
+  <div class="note warn"><b>「停用」与「今日停送」是两个不同的状态，不能混用。</b>停用 = 这家店不在这栋楼做生意了（历史订单保留）；停送 = 今天不送，明天恢复。<b>停用的楼栋必须从学生端彻底消失</b>，否则学生每天都会看到一块永远灰着的牌。</div>
+
+  <h3>6.3 商品在楼栋间的状态（3 态 · 最易混淆）</h3>
+  <table class="cs">
+    <tr><th style="width:22%">状态</th><th style="width:26%">数据表现</th><th style="width:22%">学生端</th><th>商户端</th></tr>
+    <tr><td><b>未在该楼栋上架</b></td><td class="m">无记录 或 status=下架</td><td><b>完全不出现</b></td><td>矩阵无该行 / 该列显示「未上架」灰色</td></tr>
+    <tr><td><b>上架但库存 0</b></td><td class="m">status=上架 且 stock=0</td><td><b>显示「售罄」</b>，不可加购，整行可进详情</td><td>格子 danger 色显示 0</td></tr>
+    <tr><td><b>正常在售</b></td><td class="m">status=上架 且 stock&gt;0</td><td>可加购；≤ warn_stock 显示「仅剩 N 件」</td><td>格子正常 / warn 色</td></tr>
+  </table>
+  <div class="note dan"><b>禁止把"未上架"显示成"售罄"。</b>售罄会让学生等货，而这里他等不到。错误的可获知性比信息缺失更糟。（§4.6 / §9.2）</div>
+
+  <h3>6.4 时间状态（3 态 · v0.4 新增）</h3>
+  <table class="cs">
+    <tr><th style="width:14%">状态</th><th style="width:12%">颜色</th><th style="width:24%">真实含义</th><th>标题与恢复时间</th></tr>
+    <tr><td><b>可下单</b></td><td><span class="dot ok"></span> ok</td><td>现在能下单</td><td>「现在可以下单」+ 「22:00 截单 · 还有 53 分钟」</td></tr>
+    <tr><td><b>即将截单</b></td><td><span class="dot warn"></span> warn</td><td>还能下单，但要快</td><td>「即将截单」+ 「还有 20 分钟，请尽快下单」（阈值默认 30 分钟）</td></tr>
+    <tr><td><b>已截单</b></td><td><span class="dot off"></span> off</td><td><b>今天做完了</b>（并非出错）</td><td>「今天送到这儿了」+ 「明天 06:30 可再次下单」</td></tr>
+  </table>
+  <table class="cs">
+    <tr><th style="width:16%">状态</th><th style="width:14%">颜色</th><th style="width:22%">含义</th><th>标题</th></tr>
+    <tr><td><b>休息中</b></td><td><span class="dot off"></span> off</td><td><b>还没开始</b></td><td>「店家休息中」+ 「明天 08:00 开始接单」</td></tr>
+    <tr><td><b>本栋停送</b></td><td><span class="dot off"></span> off</td><td><b>今天不做</b></td><td>「本栋今日已停送」+ 「明天恢复」+ 送到别的楼栋</td></tr>
+    <tr><td><b>已截单</b></td><td><span class="dot off"></span> off</td><td><b>今天做完了</b></td><td>「今天送到这儿了」+ 「明天 06:30 可再次下单」</td></tr>
+  </table>
+  <div class="note dan"><b>三种"不能下单"共用同一个模板、同一种灰色</b>，差别只在图标、标题、恢复时间（AC-02）。唯一使用琥珀的是「即将截单」，因为它还没发生、人还能做点什么。</div>
+
+  <h3>6.5 账本与闸门状态</h3>
+  <table class="cs">
+    <tr><th style="width:14%">层面</th><th style="width:14%">状态</th><th style="width:12%">颜色</th><th>文案与行为</th></tr>
+    <tr><td rowspan="3"><b>余额</b></td><td>正常</td><td><span class="dot ok"></span> ok</td><td>「可支撑约 4.5 天」；不显示任何警告</td></tr>
+    <tr><td>预警（≤ ¥50）</td><td><span class="dot warn"></span> warn</td><td>「已低于预警线 ¥50，建议尽快充值」；商户端红条？（<b>用琥珀不用红</b>）；平台侧告警</td></tr>
+    <tr><td>锁单（≤ 0 且触额度）</td><td><span class="dot dan"></span> dan</td><td>「已停止接单。充值后立即恢复，无需其他操作」；允许透支至 −¥20</td></tr>
+    <tr><td rowspan="3"><b>订阅</b></td><td>正常</td><td><span class="dot ok"></span> ok</td><td>「剩 62 天 · 至 2026-11-22」</td></tr>
+    <tr><td>将到期（≤ 7 天）</td><td><span class="dot warn"></span> warn</td><td>「剩 5 天 · 11-22 后停止接单，前台仍可浏览」；15/7/3 天三次提醒</td></tr>
+    <tr><td>已过期</td><td><span class="dot off"></span> off</td><td>「本学期服务期已结束，续费后即可继续接单」；<b>前台仍可浏览</b></td></tr>
+  </table>
+  <div class="note"><b>向学生暴露的商户状态必须脱敏。</b>商户余额锁单或订阅到期时，学生端只显示「休息中」或「店铺暂未营业」，<b>绝不出现"欠费""余额不足"这类商户经营信息</b>。学生与商户的经营状况无关。</div>
+
+  <h3>6.6 上线流水线状态</h3>
+  <table class="cs">
+    <tr><th style="width:14%">状态</th><th style="width:12%">颜色</th><th style="width:24%">阶段条</th><th>平台侧动作</th></tr>
+    <tr><td><b>未开始</b></td><td><span class="dot off"></span> line-100</td><td>灰条，日期显示 <code>—</code></td><td>不显示预计时间（ICP 各省 1–20 工作日不可控）</td></tr>
+    <tr><td><b>进行中</b></td><td><span class="dot warn"></span> warn</td><td>琥珀条 + 「卡 N 天」</td><td>显示负责人、上次触达时间、下一步，可记录催办</td></tr>
+    <tr><td><b>已完成</b></td><td><span class="dot ok"></span> ok</td><td>绿条 + 完成日期 ✓</td><td>—</td></tr>
+    <tr><td><b>驳回返工</b></td><td><span class="dot warn"></span> warn</td><td>琥珀条 + 驳回原因 + 重提时间</td><td><b>用琥珀不用红</b>：这是正常流程，不是异常（§5）</td></tr>
+    <tr><td><b>已跳过</b></td><td><span class="dot off"></span> off</td><td>灰条 + 说明</td><td>如"商户已有现成小程序"跳过注册阶段</td></tr>
+  </table>
+
+  <h3>6.7 代码发布状态</h3>
+  <table class="cs">
+    <tr><th style="width:16%">状态</th><th style="width:14%">颜色</th><th>文案</th></tr>
+    <tr><td>待推送</td><td><span class="dot off"></span> off</td><td>「停留在 v1.2.0」；看板统计"还停留在旧版本"的租户数</td></tr>
+    <tr><td>推送中</td><td><span class="dot info"></span> info</td><td>「推送中…」</td></tr>
+    <tr><td>推送失败</td><td><span class="dot dan"></span> dan</td><td>「推送失败 · 密钥已失效」/「IP 未在白名单」/「服务类目已变更」+ 一键重新收集密钥</td></tr>
+    <tr><td>已推送待提审</td><td><span class="dot warn"></span> warn</td><td>「已推送 7 天，商户尚未提审」+ 催办按钮。推动权在商户，平台只能催（§2.4.2）</td></tr>
+    <tr><td>已提审待发布</td><td><span class="dot warn"></span> warn</td><td>「审核中 / 审核通过待商户点发布」</td></tr>
+    <tr><td>已发布</td><td><span class="dot ok"></span> ok</td><td>「已发布 · 09-21 14:30」+ 记录 released_at，收敛完成</td></tr>
+  </table>
+
+  <h3>6.8 状态色使用红线</h3>
+  <table class="cs">
+    <tr><th style="width:14%">颜色</th><th style="width:26%">唯一含义</th><th style="width:30%">允许出现</th><th>禁止出现</th></tr>
+    <tr><td><span class="dot dan"></span> <b>danger</b></td><td>需要人<b>立刻</b>动手</td><td>待接单计数 · 余额 ≤ 0 · 库存 0 格子 · 推送失败 · 表单错误 · 不可逆确认按钮 · 商品标价（唯一例外）</td><td><b>已截单 · 提示停送 · 休息中 · 未上架 · 普通提示</b></td></tr>
+    <tr><td><span class="dot warn"></span> <b>warn</b></td><td>即将需要动手，现在还来得及</td><td>即将截单 · 低库存 · 订阅 ≤ 7 天 · 余额 ≤ 50 · 流水线卡点 · 驳回返工 · 待提审</td><td>已经发生且无法挽回的事</td></tr>
+    <tr><td><span class="dot ok"></span> <b>ok</b></td><td>已闭环，无需动作</td><td>已送达 · 营业中 · 余额充足 · 导入成功 · 已发布 · 全部送完了</td><td>尚未完成的事</td></tr>
+    <tr><td><span class="dot info"></span> <b>info</b></td><td>纯告知</td><td>配送中 · 系统公告 · 数据边界说明</td><td>需要动作的事</td></tr>
+    <tr><td><span class="dot off"></span> <b>off</b></td><td>不可用，但不危险</td><td>已截单 · 本栋停送 · 休息中 · 已取消 · 已退款 · 未上架 · 已停用 · 历史归档</td><td>需要关注的事</td></tr>
+  </table>
+</section>
+
+<!-- ============ 07 动效 ============ -->
+<section id="b7">
+  <h2><span class="num">07</span>动效规范与微交互清单</h2>
+  <p class="sub">动效在本产品里只服务一件事：<b>让"刚才那一下生效了"变得可见</b>。它不服务娱乐性，也不服务品牌表达。</p>
+
+  <h3>7.1 三条原则</h3>
+  <div class="note">
+    <b>① 时长必须短于感知阈值。</b>高频动作（加购、勾选、切楼栋）的反馈必须在 150ms 内完成，超过这个时长就会产生"卡"的感觉。<br>
+    <b>② 只动必须动的东西。</b>不做整页转场、不做元素飞入、不做列表交错入场。这些在第一次看时是"高级感"，第十次看时是"慢"。<br>
+    <b>③ 禁止弹性回弹。</b>零食下单是高频短时动作，回弹会拖慢节奏，与"快"的品牌承诺矛盾。
+  </div>
+
+  <h3>7.2 时长与缓动总表</h3>
+  <table class="cs">
+    <tr><th style="width:12%">时长</th><th style="width:20%">缓动</th><th style="width:26%">用于</th><th>约束</th></tr>
+    <tr><td class="m">80ms</td><td class="m">ease-out</td><td>按钮按压缩放（scale .985）、复选勾选绘制</td><td>不做位移，避免在滚动列表中误触发</td></tr>
+    <tr><td class="m">150ms</td><td class="m">ease</td><td>背景色变化、Chip 选中、Tab 切换、库存格状态切换</td><td>只动 background / color / border-color，这三项走 GPU 合成</td></tr>
+    <tr><td class="m">200ms</td><td class="m">ease</td><td>开关滑块位移（与背景色同步）</td><td>两者时长必须一致，否则滑块会"飘"</td></tr>
+    <tr><td class="m">220ms</td><td class="m">ease-out</td><td>骨架屏淡出与内容淡入、勾选后行折叠、批量条升起</td><td>折叠必须同时改 max-height 与 opacity，否则会闪</td></tr>
+    <tr><td class="m">280ms</td><td class="m">cubic-bezier(.32,.72,0,1)</td><td>弹窗出现、抽屉升起、撤销条滑入、Toast 淡入</td><td>位移起点不超过屏高 60%</td></tr>
+    <tr><td class="m">400ms</td><td class="m">ease</td><td>数字滚动（营收、余额、进度百分比）</td><td><b>只对变化值做一次插值</b>，不做持续跳动</td></tr>
+    <tr><td class="m">1400ms 循环</td><td class="m">linear</td><td>骨架屏扫光（100% → 0）</td><td>只动 background-position，不动 opacity</td></tr>
+    <tr><td class="m">1800–3000ms</td><td class="m">—</td><td>Toast 停留时长（按类型不同）</td><td>见 §C-01</td></tr>
+    <tr><td class="m">5000ms</td><td class="m">linear</td><td>撤销条倒计时横条</td><td><b>AC-11</b>：必须为 5 秒</td></tr>
+  </table>
+
+  <h3>7.3 微交互清单（15 条，逐条实现）</h3>
+  <table class="cs">
+    <tr><th style="width:6%">#</th><th style="width:22%">交互</th><th style="width:18%">动效</th><th>为什么</th></tr>
+    <tr><td class="m">1</td><td>加购（点 + 号）</td><td>步进器从"只有 +"展开为"− 数量 +"（150ms）</td><td>展开本身就是在说"你加进去了"，不需要额外提示</td></tr>
+    <tr><td class="m">2</td><td>吸底购物车条数字变化</td><td>金额与数量做 400ms 插值</td><td>金额跳变会让用户怀疑"是不是加错了"，滚动到目标值的过程本身就是确认</td></tr>
+    <tr><td class="m">3</td><td>切换楼栋</td><td>整页内容淡出淡入 150ms + 购物车清空</td><td>必须让"整页都换了"这件事可见，否则用户以为没切成功</td></tr>
+    <tr><td class="m">4</td><td>库存格改数</td><td>底色按新状态 150ms 过渡（正常/低/零）</td><td>颜色渐变让"我改的是哪一格"清晰可见</td></tr>
+    <tr><td class="m">5</td><td>库存减到 0</td><td>格子转 danger 色 + 底部轻提示「已置为售罄 · 撤销」</td><td>影响顾客可见范围，必须有一次提示，但不用确认框</td></tr>
+    <tr><td class="m">6</td><td>配送行勾选</td><td>勾选圈 80ms 填充 + 行文字转灰 150ms</td><td>双重反馈：圈变了说明点到了，文字灰了说明这单结束了</td></tr>
+    <tr><td class="m">7</td><td>楼层组全部勾完</td><td>整组 220ms 折叠为一行绿色「N 楼已全部送达」</td><td><b>折叠不清空</b>：折叠是她敢往下走的依据</td></tr>
+    <tr><td class="m">8</td><td>误勾撤销</td><td>撤销条从底部滑入 280ms，横条 5 秒走完</td><td>倒计时可见，用户知道还剩多久可以反悔</td></tr>
+    <tr><td class="m">9</td><td>接单</td><td>按钮转 loading → 卡片 220ms 淡出并移出待接单列表</td><td>卡片离开视口是"处理完了"的物理表达</td></tr>
+    <tr><td class="m">10</td><td>数据加载完成</td><td>骨架 220ms 淡出，内容 220ms 淡入（交叉）</td><td>必须交叉，不能先消失再出现，否则会看到一瞬间白屏</td></tr>
+    <tr><td class="m">11</td><td>下拉刷新</td><td>指示器展开 + 弹性回弹（唯一允许的弹性，因为它是手势跟随）</td><td>手势跟随的物理感是必要的，它不属于"界面动效"</td></tr>
+    <tr><td class="m">12</td><td>确认弹窗</td><td>遮罩 200ms 淡入 + 卡片 280ms 缩放（.94 → 1）</td><td>缩放起止差异要小，过大像"蹦出来"</td></tr>
+    <tr><td class="m">13</td><td>底部抽屉</td><td>280ms 从底部升起，遮罩同步淡入</td><td>位移距离 = 抽屉高度，不做超调</td></tr>
+    <tr><td class="m">14</td><td>长任务进度</td><td>进度条宽度 400ms 缓动；日志逐行追加，不重排</td><td>日志重排会让运营看不清正在发生什么</td></tr>
+    <tr><td class="m">15</td><td>tab 切换</td><td>图标线性↔面性 150ms 切换，无滑动指示条</td><td>不做滑动指示条：TabBar 是页面导航，不是内容分页</td></tr>
+  </table>
+
+  <h3>7.4 性能与无障碍约束</h3>
+  <table class="cs">
+    <tr><th style="width:20%">约束</th><th style="width:26%">要求</th><th>说明</th></tr>
+    <tr><td>可动画属性</td><td class="m">只允许 transform / opacity / background-color / color / border-color</td><td>禁止动画 <code>width / height / top / left / margin</code>——会触发重排，低端安卓机上必然掉帧</td></tr>
+    <tr><td>折叠动画</td><td class="m">max-height + opacity</td><td>这是唯一允许动画 max-height 的例外，因为折叠必须改变高度</td></tr>
+    <tr><td>减少动效</td><td class="m"><code>prefers-reduced-motion: reduce</code> 时：所有位移改淡入淡出，时长减半，骨架扫光取消</td><td>对前庭敏感用户，位移是最难受的一类动效</td></tr>
+    <tr><td>骨架扫光</td><td class="m">列表超过 20 个骨架块时用静态 line-100</td><td>大量元素同时扫光会造成明显的性能压力与视觉噪点</td></tr>
+    <tr><td>遮挡检测</td><td class="m">聚焦输入框时自动滚动，<code>cursor-spacing</code> = 20</td><td>键盘不得遮挡正在输入的字段</td></tr>
+    <tr><td>长列表</td><td class="m">订单列表、配送清单、库存矩阵使用虚拟滚动或分页</td><td>库存矩阵 50 SKU × 5 栋 = 250 个可编辑单元格，全量渲染会卡</td></tr>
+    <tr><td>图片</td><td class="m">缩略图使用 webp，列表图片懒加载，占位尺寸与真实一致</td><td>尺寸不一致会导致滚动时抖动</td></tr>
+  </table>
+
+  <div class="note" style="margin-top:28px">
+    <b>本文件结束。</b>下一步请打开 <b>《全量页面与闭环 v3.0》</b>——那里有全部页面的 1:1 结构稿、每屏的字段标注表、42 条闭环校验矩阵与最终验收清单。
+  </div>
+</section>
+
+</main>
+</body>
+</html>

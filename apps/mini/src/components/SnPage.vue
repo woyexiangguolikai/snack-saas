@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useThemeStore } from '../stores/theme';
 import SnNavBar from './SnNavBar.vue';
+import SnNetBanner from './SnNetBanner.vue';
 
 /**
  * A-14 页面外壳 Page（原子 · 所有移动端页面的外壳）
@@ -37,6 +38,10 @@ function onBack() {
 <template>
   <view class="sn-page-root" :class="`is-${surface}`" :style="theme.themeStyle">
     <SnNavBar v-if="navTitle" :title="navTitle" :show-back="showBack" @back="onBack" />
+
+    <!-- 网络横幅：导航栏正下方，高 26px，**不遮挡任何操作**。
+         断网时页面内容保持可见，只是不能提交（AC-20：错误不清空页面）。 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="sn-scroll">
       <view class="sn-body">

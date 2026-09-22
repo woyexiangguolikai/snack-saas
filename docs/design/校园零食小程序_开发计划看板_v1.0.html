@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>校园零食多租户小程序 · 开发计划看板 v1.0</title>
+<style>
+/* ============================================================
+   Design Token —— 与设计系统 v3.0 同源
+   ============================================================ */
+:root{
+  --brand-50:#FFF6F0;--brand-100:#FFE8D9;--brand-200:#FFCFB0;--brand-300:#FFAE7E;
+  --brand-400:#FF8B4D;--brand-500:#F26B21;--brand-600:#D8551A;--brand-700:#B8440F;--brand-800:#8F3208;
+  --ink-900:#1C1917;--ink-700:#44403C;--ink-500:#78716C;--ink-400:#A8A29E;--ink-300:#D6D3CD;
+  --line-200:#E7E5E0;--line-100:#F2F0EB;--paper:#FBF9F5;--surface:#FFFFFF;
+  --ok:#15803D;--ok-bg:#EAF6EE;
+  --warn:#B45309;--warn-bg:#FDF3E3;
+  --danger:#C42B1C;--danger-bg:#FCEDEA;
+  --info:#1D5FA8;--info-bg:#EAF1FA;
+  --off:#6B6560;--off-bg:#F2F0EB;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-full:999px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --s1:0 1px 2px rgba(28,25,23,.05),0 2px 8px rgba(28,25,23,.04);
+  --s2:0 6px 24px rgba(28,25,23,.10);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--paper);color:var(--ink-900);font-family:var(--font);font-size:14.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+
+/* ---------- 文档外壳 ---------- */
+.topbar{position:sticky;top:0;z-index:80;background:rgba(251,249,245,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:14px;padding:0 20px;height:52px}
+.tb-logo{width:24px;height:24px;border-radius:7px;background:var(--brand-500);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tb-t{font-size:13.5px;font-weight:600;white-space:nowrap}
+.tb-v{font-family:var(--mono);font-size:11px;color:var(--brand-500);border:1px solid var(--brand-200);background:var(--brand-50);padding:1px 7px;border-radius:var(--r-full);flex:none}
+.tb-nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto}
+.tb-nav a{font-size:12.5px;color:var(--ink-500);text-decoration:none;padding:6px 11px;border-radius:var(--r-sm);white-space:nowrap}
+.tb-nav a:hover{background:var(--line-100);color:var(--ink-900)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 90px}
+section{padding:40px 0 8px;border-top:1px solid var(--line-200);margin-top:32px}
+section:first-of-type{border-top:0}
+h1{font-size:28px;line-height:1.3;letter-spacing:-.015em;margin:20px 0 10px;font-weight:600}
+h2{font-size:20px;letter-spacing:-.01em;margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:9px}
+h2 .num{font-family:var(--mono);font-size:12.5px;color:var(--brand-500);font-weight:400}
+h3{font-size:15px;margin:24px 0 8px;font-weight:600}
+p{margin:9px 0}
+.lede{font-size:14px;color:var(--ink-500);max-width:82ch}
+.sub{font-size:13px;color:var(--ink-500);margin:0 0 6px;max-width:88ch}
+.note{font-size:12.5px;color:var(--ink-500);background:var(--line-100);border-radius:var(--r-md);padding:11px 14px;margin:14px 0;line-height:1.75}
+.note b{color:var(--ink-900);font-weight:600}
+.note.warn{background:var(--warn-bg);color:#7A3E05}
+.note.warn b{color:#5C2E04}
+.note.dan{background:var(--danger-bg);color:#8F2015}
+.note.dan b{color:#6E180F}
+.note.ok{background:var(--ok-bg);color:#11602E}
+.note.ok b{color:#0C4A22}
+code{font-family:var(--mono);font-size:12px;background:var(--line-100);padding:1px 5px;border-radius:4px;color:var(--brand-700)}
+
+/* ---------- 卡片 / 表格 ---------- */
+.cbox{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-lg);margin:16px 0;overflow:hidden}
+.chd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line-200);background:var(--paper);flex-wrap:wrap}
+.cid{font-family:var(--mono);font-size:11px;color:var(--brand-700);background:var(--brand-50);border:1px solid var(--brand-200);border-radius:5px;padding:1px 6px;flex:none}
+.ctag{font-size:10.5px;color:var(--ink-400);border:1px solid var(--line-200);border-radius:var(--r-full);padding:1px 8px;flex:none}
+.ctag.key{border-color:#E9C9C4;color:var(--danger);background:var(--danger-bg)}
+.ctag.ok{border-color:#BFE0C8;color:var(--ok);background:var(--ok-bg)}
+.chd h4{font-size:13.5px;margin:0;font-weight:600}
+.chd .r{margin-left:auto;font-size:11px;color:var(--ink-400);font-family:var(--mono)}
+.cbody{padding:14px 16px}
+table.cs{width:100%;border-collapse:collapse;font-size:12.5px}
+table.cs th{text-align:left;background:var(--line-100);color:var(--ink-500);font-weight:500;padding:8px 12px;border-top:1px solid var(--line-200);white-space:nowrap;font-size:11px}
+table.cs td{padding:8px 12px;border-top:1px solid var(--line-200);vertical-align:top;line-height:1.65}
+table.cs td.m{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+table.cs td b{font-weight:600}
+table.cs tr:hover td{background:#FDFCFA}
+.tagp{display:inline-block;font-size:10.5px;font-family:var(--mono);background:var(--line-100);border-radius:4px;padding:1px 6px;color:var(--ink-700)}
+.tagp.pv{background:var(--danger-bg);color:var(--danger)}
+.tagp.pk{background:var(--ok-bg);color:var(--ok)}
+.tagp.pw{background:var(--warn-bg);color:var(--warn)}
+.tagp.pi{background:var(--info-bg);color:var(--info)}
+
+/* ---------- 三层范围 ---------- */
+.layers{display:grid;gap:12px;margin:16px 0}
+.layer{border:1px solid var(--line-200);border-radius:var(--r-lg);background:var(--surface);padding:14px 16px;border-left:4px solid var(--brand-500)}
+.layer.p1{border-left-color:var(--info)}
+.layer.ext{border-left-color:var(--danger)}
+.layer h4{margin:0 0 6px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.layer p{margin:4px 0;font-size:12.5px;color:var(--ink-500);line-height:1.75}
+.layer .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-400)}
+
+/* ---------- 甘特 ---------- */
+.gantt{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-lg);overflow:auto;margin:16px 0}
+.grid{display:grid;grid-template-columns:212px repeat(10,minmax(58px,1fr));min-width:820px}
+.gcell{padding:1px 0;min-height:34px;display:flex;align-items:center}
+.ghead{font-family:var(--mono);font-size:10.5px;color:var(--ink-500);justify-content:center;background:var(--paper);border-bottom:1px solid var(--line-200);padding:8px 2px;position:sticky;top:0;z-index:3;flex-direction:column;gap:0;line-height:1.4}
+.ghead b{font-size:11px;color:var(--ink-900);font-weight:600}
+.ghead.corner{justify-content:flex-start;padding-left:14px;font-family:var(--font);font-size:11px}
+.glab{font-size:12px;color:var(--ink-700);padding:0 10px 0 14px;font-family:var(--font)}
+.glab span{font-family:var(--mono);font-size:10px;color:var(--ink-400);display:block;line-height:1.3}
+.gtrack{position:relative;border-left:1px dashed var(--line-200)}
+.bar{height:20px;border-radius:var(--r-sm);background:var(--brand-500);color:#fff;font-size:10.5px;font-family:var(--mono);display:flex;align-items:center;padding:0 8px;white-space:nowrap;overflow:hidden;margin:0 3px;box-shadow:var(--s1)}
+.bar.b2{background:var(--brand-300);color:#5C2E04}
+.bar.info{background:var(--info)}
+.bar.ok{background:var(--ok)}
+.bar.dang{background:var(--danger)}
+.bar.ghost{background:var(--line-200);color:var(--ink-500)}
+.grow{display:contents}
+.gday{border-left:1px dashed var(--line-200);min-height:34px}
+.wknd{background:#FCFAF7}
+
+/* ---------- 验收勾选 ---------- */
+.vlist{display:grid;gap:10px;margin:16px 0}
+.vitem{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-md);padding:11px 14px;display:flex;gap:12px;align-items:flex-start}
+.vitem input{margin-top:4px;width:16px;height:16px;accent-color:var(--brand-500);flex:none;cursor:pointer}
+.vitem.on{background:#FCFBF9;border-color:var(--brand-200)}
+.vtxt{flex:1;min-width:0}
+.vtxt b{font-size:13px;font-weight:600;display:block;line-height:1.5}
+.vtxt small{font-size:12px;color:var(--ink-500);display:block;line-height:1.7;margin-top:2px}
+.vtxt small em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--brand-700);background:var(--brand-50);border-radius:4px;padding:0 5px;margin-right:4px}
+.vmeta{font-family:var(--mono);font-size:11px;color:var(--ink-400);flex:none;text-align:right;white-space:nowrap}
+
+/* ---------- 里程碑轴 ---------- */
+.tl{position:relative;margin:18px 0 8px;padding-left:26px}
+.tl::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line-200)}
+.tli{position:relative;padding:0 0 18px 0}
+.tli::before{content:"";position:absolute;left:-24px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--brand-500);border:2.5px solid var(--paper);box-shadow:0 0 0 1.5px var(--brand-300)}
+.tli.ext::before{background:var(--danger);box-shadow:0 0 0 1.5px #E9C9C4}
+.tli h4{margin:0;font-size:13.5px;font-weight:600}
+.tli .when{font-family:var(--mono);font-size:11px;color:var(--brand-700);margin-left:7px;font-weight:400}
+.tli p{margin:3px 0 0;font-size:12.5px;color:var(--ink-500);line-height:1.7}
+
+/* ---------- 参数卡 ---------- */
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:16px 0}
+.pcard{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-lg);padding:13px 15px}
+.pcard .k{font-size:11.5px;color:var(--ink-400);font-family:var(--mono)}
+.pcard .v{font-size:16px;font-weight:600;margin:3px 0 4px}
+.pcard .d{font-size:12px;color:var(--ink-500);line-height:1.65}
+
+/* ---------- RACI ---------- */
+.ra{font-family:var(--mono);font-size:11px;font-weight:600;display:inline-block;width:18px;text-align:center;border-radius:4px;padding:0 4px}
+.ra.r{background:var(--brand-500);color:#fff}
+.ra.a{background:var(--ink-900);color:#fff}
+.ra.c{background:var(--info-bg);color:var(--info)}
+.ra.i{background:var(--line-100);color:var(--ink-400)}
+
+.foot{font-size:12px;color:var(--ink-400);border-top:1px solid var(--line-200);margin-top:34px;padding-top:16px;line-height:1.8}
+@media(max-width:720px){.grid{grid-template-columns:150px repeat(10,minmax(46px,1fr))}.wrap{padding:0 14px 60px}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="tb-logo">零</div>
+  <div class="tb-t">校园零食多租户小程序 · 开发计划看板</div>
+  <div class="tb-v">v1.0</div>
+  <nav class="tb-nav">
+    <a href="#s1">范围</a><a href="#s2">技术栈</a><a href="#s3">阶段</a>
+    <a href="#s4">甘特</a><a href="#s5">里程碑</a><a href="#s6">验收</a>
+    <a href="#s7">AC 落位</a><a href="#s8">职责</a><a href="#s9">风险</a>
+  </nav>
+</div>
+
+<div class="wrap">
+
+  <h1>开发计划 · 里程碑 · 验收节点</h1>
+  <p class="lede">把《需求与设计 v0.4》的 11 步实现顺序与《全量页面与闭环 v3.0》的 51 页 / 42 闭环 / 20 条 AC，翻译成带日期、可验收、可勾选执行的作战看板。</p>
+
+  <div class="note ok">
+    <b>一句话结论</b>：D7（09-28）交付可直接上线运营的 v1.0 代码 —— 4 端 51 页全通、42 条闭环全通、20 条 AC 全过；<b>真实首个租户上线时间由商户的 ICP 备案与商户号办理进度决定，与开发进度无关。</b>
+  </div>
+
+  <div class="params">
+    <div class="pcard"><div class="k">执行模式</div><div class="v">纯 AI 开发</div><div class="d">AI 写全部代码、跑全部验证；人只做决策与验收（每日 1 次 · 约 30 分钟）</div></div>
+    <div class="pcard"><div class="k">工期</div><div class="v">7 天（D1–D7）</div><div class="d">09-22 → 09-28，一天一个里程碑，收盘即验收</div></div>
+    <div class="pcard"><div class="k">技术栈</div><div class="v">uni-app + Vue3</div><div class="d">一套代码编 4 端：mp-weixin ×2 + H5 ×2，Token 与组件库单点复用</div></div>
+    <div class="pcard"><div class="k">总量</div><div class="v">51 页 · 42 闭环</div><div class="d">学生端 17 · 商户小程序 10 · 商户网页 11 · 平台后台 13</div></div>
+  </div>
+
+  <!-- ==================== 01 范围裁定 ==================== -->
+  <section id="s1">
+    <h2><span class="num">01</span>范围裁定：一周硬约束下的三层切分</h2>
+    <p class="sub">v0.4 的 D6 明确「不切分，做全量」。本计划不砍功能，但按「能否由 AI 独立完成」把交付物切成三层。</p>
+
+    <div class="layers">
+      <div class="layer">
+        <h4>P0 · AI 可独立交付<span class="cnt">D1–D7 · 必交</span></h4>
+        <p>4 端全部 <b>51 页</b> + <b>42 条闭环</b> + 双账本 + 两道闸门 + SKU×楼栋库存矩阵 + 上线流水线 + <b>20 条 AC 自查</b> + 演示种子数据 + Docker 一键部署</p>
+      </div>
+      <div class="layer p1">
+        <h4>P1 · AI 可交付（增强项）<span class="cnt">D8–D10</span></h4>
+        <p>B4：按楼栋经营看板 / 数据导出 / 送达凭证与争议处理 / 多店员账号与权限 / 拼单优惠券积分评价 / 打印机对接 / 线上自助续费</p>
+      </div>
+      <div class="layer ext">
+        <h4>外部依赖 · AI 无法完成（决定真实上线日）<span class="cnt">须 D1 即并行启动</span></h4>
+        <p>小程序注册 + 微信认证（300/年）｜<b>ICP 备案（1–20 工作日）</b>｜微信支付商户号（人脸/打款）｜代码上传密钥 + IP 白名单｜食品服务类目资质｜商户提审与发布</p>
+      </div>
+    </div>
+
+    <div class="note dan">
+      <b>⚠️ 必须先说清</b>：代码一周内可以写完，但「真实上线」一周内不可能完成 —— 卡点是 ICP 备案（1–20 个工作日，主体是商户）与商户号本人办理，<b>不是代码问题</b>。因此本计划把「代码交付日 D7」与「上线日」解耦：D7 交付的是「接上商户凭证即可推送」的完整系统，D8–D10 用体验版 + Mock 支付在真实小程序环境全链路验证。
+    </div>
+  </section>
+
+  <!-- ==================== 02 技术栈 ==================== -->
+  <section id="s2">
+    <h2><span class="num">02</span>技术方案锁定</h2>
+    <p class="sub">一套代码四端；组件库自研（直接复刻 v3.0 设计系统 36 类组件 + Token），以保证 AC-04 / AC-05 / AC-06 可判定。</p>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">架构</span><h4>一套代码，四个端</h4><span class="ctag">uni-app + Vue3 + Vite + TS</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:180px">构建目标</th><th>端</th><th>页面</th><th>说明</th></tr>
+          <tr><td class="m">build:mp-weixin</td><td>微信小程序 ×2 端</td><td class="m">27</td><td>学生端 17 页（主包）+ 商户端 10 页（分包 <code>/pages-merchant/</code>）；同一 AppID、同一套 API 与权限模型，登录态按角色分流</td></tr>
+          <tr><td class="m">build:h5</td><td>网页 ×2 端</td><td class="m">24</td><td>商户网页 11 页 <code>/admin</code> + 平台后台 13 页 <code>/platform</code>；桌面布局层（≥1024px 切「筛选栏 + 表格 + 分页」）</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">选型</span><h4>技术栈清单</h4></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:150px">层</th><th>选型</th><th>理由</th></tr>
+          <tr><td>小程序 / H5</td><td class="m">uni-app 3.x + Vue3 + Vite + TS + Pinia</td><td>一套代码多端；组合式 API 便于把设计系统做成 hooks</td></tr>
+          <tr><td>UI 基座</td><td><b>自研组件库</b>（复刻 v3.0 的 36 类组件 + Token）</td><td>不引第三方 UI 库，才能保证 Token 单一真相源</td></tr>
+          <tr><td>后端</td><td class="m">NestJS 10 + TypeScript</td><td>装饰器式多租户拦截器与守卫；模块边界清晰</td></tr>
+          <tr><td>ORM / DB</td><td class="m">Prisma 5 + MySQL 8</td><td><b>每租户独立库 + 1 平台库</b>（D3）；租户库可独立备份恢复</td></tr>
+          <tr><td>缓存 / 队列</td><td class="m">Redis 7 + BullMQ</td><td>幂等键、库存去抖、5 类定时任务</td></tr>
+          <tr><td>支付</td><td class="m">微信支付 V3 JSAPI → PayProvider</td><td>沙箱期 Mock，D8 无缝换真实</td></tr>
+          <tr><td>推送</td><td class="m">miniprogram-ci → DeployProvider</td><td>灰度批量推送；30–50 家后迁第三方平台</td></tr>
+          <tr><td>部署</td><td class="m">Docker Compose + Nginx</td><td>单域名 + 路径前缀 <code>/t/{tenant_code}/api</code></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">核心抽象</span><h4>六个必须先定接口的抽象</h4><span class="ctag key">先定接口，后填实现</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:170px">抽象</th><th>职责</th><th>为什么必须先做</th></tr>
+          <tr><td class="m">TenantRouter</td><td>AppID / tenant_code → 租户库连接 + 配置</td><td>所有请求的入口</td></tr>
+          <tr><td class="m">ConfigResolver</td><td>楼栋级 <code>config_override</code> 与店铺级配置合并，<b>缺省即继承</b></td><td>决定「加配置项不改表」（铁律 5）</td></tr>
+          <tr><td class="m">StockGate</td><td>单条原子 UPDATE 预占 / 释放，影响行数 = 0 即拒绝</td><td>防超卖（§4.7）</td></tr>
+          <tr><td class="m">OrderStateMachine</td><td>订单状态唯一合法迁移表</td><td>支付回调幂等（细节 29）</td></tr>
+          <tr><td class="m">PayProvider</td><td>统一下单 / 回调验签 / 退款</td><td>沙箱期与真实期可切换</td></tr>
+          <tr><td class="m">DeployProvider</td><td>版本 → N 个 AppID 的灰度批量推送</td><td>上线流水线核心（§2.4.4）</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 03 阶段 ==================== -->
+  <section id="s3">
+    <h2><span class="num">03</span>阶段计划 S0–S8（每阶段以「退出条件」收口）</h2>
+    <p class="sub">缺陷当日清零、不跨日累积。退出条件不满足则不放行下一阶段。</p>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S0</span><h4>地基</h4><span class="ctag">D1 上半日</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>初始化 uni-app Vue3 双目标工程 · 落地 Token 到 <code>app.wxss</code> / <code>uni.scss</code> · 复刻原子组件 14 类 · NestJS 骨架 + Prisma 双 schema · Docker Compose 起环境</td></tr>
+          <tr><th>产出</th><td>可运行空壳 4 端 + 组件 Playground</td></tr>
+          <tr><th>退出条件</th><td>4 端均可编译运行；14 类原子组件全状态与设计系统一致；<b>全库无硬编码色值</b></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S1</span><h4>多租户底座 + 楼栋模型</h4><span class="ctag">D1 下半 – D2 上半</span><span class="ctag key">最不可返工</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td><code>/tenant/resolve</code> + JWT + TenantRouter · 租户库自动建库与迁移 · <code>buildings</code> + <code>config_override</code> + ConfigResolver · <code>products</code> + <code>product_stocks</code>（SKU×楼栋）+ <code>stock_logs</code> · 单楼栋自动降级 · 楼栋只停用不删除</td></tr>
+          <tr><th>产出</th><td>创建租户向导可用 + 楼栋 CRUD API + 配置下发 API</td></tr>
+          <tr><th>退出条件</th><td>一键建库成功；新增楼栋后学生端<b>不发版即看到</b>；<code>config_override</code> 缺省继承验证通过</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S2</span><h4>双账本 + 两道闸门</h4><span class="ctag">D2 下半</span><span class="ctag key">唯一收钱通道</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>订阅账本（300/学期，独立计价）· 余额账本（2%，100 起充，<code>credit_limit=-20</code>，<code>warn_line=50</code>）· 支付成功写待扣 → 每日定时汇总扣减 → 可回链订单 · 下单放行 6 条件 · 15/7/3 天提醒 · 文案禁「欠费」</td></tr>
+          <tr><th>退出条件</th><td>200 笔跨日订单扣减分毫不差；退款返还互抵正确；余额归零 + 透支 20 后停单；充值后自动解冻</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S3</span><h4>学生端交易闭环</h4><span class="ctag">D3 全天</span><span class="ctag ok">CS-01 ~ CS-13</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>学生端 17 页全量：闪屏 / 解析骨架 / 店铺未开通（绝不白屏）· 楼栋抽屉 + 记忆 · 首页 / 分类 / 搜索 / 详情抽屉 · 购物车绑楼栋（切换清空 + 轻提示）· 结算页四问答 · 地址簿（楼栋 + 楼层 + 房间号）· 支付中转/结果（含<b>处理中</b>）· 订单列表/详情/退款/我的 · <b>时间窗</b>三态</td></tr>
+          <tr><th>退出条件</th><td>13 条闭环全通；服务端二次校验楼栋；可否下单由服务端判定（AC-14）</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S4</span><h4>订单状态机 + 商户小程序</h4><span class="ctag">D4 全天</span><span class="ctag ok">CM-01 ~ CM-08</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>状态机 + 库存预占/释放/回库（StockGate）· 回调幂等 · 超时关单 + 送达后自动完成兜底 · 订阅消息（接单/送达 + 站内红点兜底）· 退款（全退/部分退）+ 服务费返还 + 未送达回库 · 商户小程序 10 页</td></tr>
+          <tr><th>重点</th><td><b>M-01 配送清单为第一 Tab</b>：按 楼栋 → 楼层 → 房间号 空间序，行级热区整行勾选，勾完折叠成绿色「已全部送达」行，撤销 5s，批量送达（AC-03）</td></tr>
+          <tr><th>退出条件</th><td>1000 并发零超卖；回调重复 10 次结果一致；清单里<b>没有时间序、没有「由新到旧」</b></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S5</span><h4>商户网页后台</h4><span class="ctag">D5 全天</span><span class="ctag ok">CW-01 ~ CW-10</span><span class="ctag key">批量=体验命门</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>商户网页 11 页：工作台 / 楼栋与配送 / 时间窗配置 / 商品管理 / <b>库存矩阵（核心页）</b> / 库存流水与调拨 / 订单管理 / <b>Excel 导入 4 步</b> / 店铺设置 / 账单与明细 / 数据导出</td></tr>
+          <tr><th>重点</th><td>「同步上架」与「同步库存数值」是<b>两张独立卡，各写明「我不改什么」</b>（AC-10）· 库存格底色 + 文字角标双重编码（AC-11）· 截单时间系统自动早于门禁结束 · Excel 错误带行号 + 人话原因 + 跳过错误行继续（R-8）</td></tr>
+          <tr><th>退出条件</th><td>3 栋 × 50 SKU 从 150 次手工输入降到 <b>1 次同步</b>；停送后库存保留且界面明写（AC-17）</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S6</span><h4>平台后台 + 上线流水线</h4><span class="ctag">D6 全天</span><span class="ctag ok">CP-01 ~ CP-11</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>平台后台 13 页：租户管理 / 租户详情 / 创建租户向导 / 流水线看板 / 返工队列 / 版本与发布看板 / 灰度批量推送 / 两道闸门 / 对账 / 监控告警 / 工单 / 密钥管理 / 学校与楼栋模板</td></tr>
+          <tr><th>重点</th><td>卡点显示「卡了 N 天 + 上次触达」· 驳回用<b>琥珀不用红</b> · 灰度先 1–2 家再批量（支持排除名单）· 密钥<b>只可替换不可查看</b> · 平台后台四色中性（AC-12）</td></tr>
+          <tr><th>退出条件</th><td>mock 环境批量推 20 个伪 AppID 全成功可回滚；<b>平台侧任何页面与接口响应中查不到房间号字段</b>（AC-13）</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S7</span><h4>账单 / 对账 / 定时任务 / 边界兜底</h4><span class="ctag">D7 上半</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>账单生成 + 差额标记 + 2% 汇总 · 5 类定时任务（每日扣减 / 超时关单 / 送达自动完成 / 到期提醒 / 对账巡检自动补单）· 过渡页 6 + 骨架屏 8 + 空态 12 + 错误网络态 · 9 处断链 R-1~R-9 兜底</td></tr>
+          <tr><th>退出条件</th><td>R-1 ~ R-9 全部可复现验证；12 类空态与 6 类过渡页与设计文档 1:1</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">S8</span><h4>集成回归 + AC 自查 + 交付</h4><span class="ctag">D7 下半</span><span class="ctag key">判定「做完了吗」</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:86px">任务</th><td>42 条闭环逐条走通回归 · AC-01~AC-20 逐项自查 · 埋演示商品与楼栋（细节 37）· 全链路压测 · 交付物打包 + 部署脚本 + README + 两本手册</td></tr>
+          <tr><th>退出条件</th><td><b>42/42 闭环通过 + 20/20 AC 通过 + 零超卖 + 对账差额 = 0</b></td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 04 甘特 ==================== -->
+  <section id="s4">
+    <h2><span class="num">04</span>关键时间节点 · 甘特（D1–D10）</h2>
+    <p class="sub">D1 = 2026-09-22（周二）… D7 = 09-28（周一）。周末不休息 —— AI 连续执行，人每日收盘验收一次。</p>
+
+    <div class="gantt">
+      <div class="grid">
+        <!-- 表头 -->
+        <div class="gcell ghead corner">阶段 / 日期</div>
+        <div class="gcell ghead"><b>D1</b>09-22 二</div>
+        <div class="gcell ghead"><b>D2</b>09-23 三</div>
+        <div class="gcell ghead"><b>D3</b>09-24 四</div>
+        <div class="gcell ghead"><b>D4</b>09-25 五</div>
+        <div class="gcell ghead wknd"><b>D5</b>09-26 六</div>
+        <div class="gcell ghead wknd"><b>D6</b>09-27 日</div>
+        <div class="gcell ghead"><b>D7</b>09-28 一</div>
+        <div class="gcell ghead"><b>D8</b>09-29 二</div>
+        <div class="gcell ghead"><b>D9</b>09-30 三</div>
+        <div class="gcell ghead"><b>D10</b>10-01 四</div>
+
+        <!-- 行：S0 -->
+        <div class="gcell glab">S0 地基<span>P0 · D1 上半</span></div>
+        <div class="gcell gtrack"><div class="bar">Token + 原子组件 14</div></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S1 -->
+        <div class="gcell glab">S1 多租户底座 + 楼栋模型<span>P0 · D1–D2</span></div>
+        <div class="gcell gtrack"><div class="bar">租户识别 / 建库</div></div>
+        <div class="gcell gtrack"><div class="bar">楼栋 + 库存矩阵</div></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S2 -->
+        <div class="gcell glab">S2 双账本 + 两道闸门<span>P0 · D2 下半</span></div>
+        <div class="gcell gtrack"></div>
+        <div class="gcell gtrack"><div class="bar">账本 / 闸门 / 每日扣减</div></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S3 -->
+        <div class="gcell glab">S3 学生端交易闭环<span>P0 · D3 · CS-01~13</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"><div class="bar">17 页 + 支付 + 时间窗</div></div>
+        <div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S4 -->
+        <div class="gcell glab">S4 状态机 + 商户小程序<span>P0 · D4 · CM-01~08</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"><div class="bar">配送清单 / 接单 / 退款</div></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S5 -->
+        <div class="gcell glab">S5 商户网页后台<span>P0 · D5 · CW-01~10</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"><div class="bar">11 页 + 库存矩阵 + Excel</div></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S6 -->
+        <div class="gcell glab">S6 平台后台 + 推送<span>P0 · D6 · CP-01~11</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div>
+        <div class="gcell gtrack wknd"><div class="bar">13 页 + 流水线 + 灰度推送</div></div>
+        <div class="gcell gtrack"></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S7 -->
+        <div class="gcell glab">S7 账单对账 + 边界兜底<span>P0 · D7 上半</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div>
+        <div class="gcell gtrack"><div class="bar">任务 + 过渡/骨架/空态</div></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：S8 -->
+        <div class="gcell glab">S8 回归 + AC 自查 + 交付<span>P0 · D7 下半</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div>
+        <div class="gcell gtrack"><div class="bar ok">42 闭环 + 20 AC + 交付</div></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+
+        <!-- 行：P1 -->
+        <div class="gcell glab">P1 · B4 增强项<span>增强</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"><div class="bar b2">经营看板 / 导出 / 送达凭证</div></div>
+        <div class="gcell gtrack"><div class="bar b2">多店员 / 自助续费</div></div>
+        <div class="gcell gtrack"></div>
+
+        <!-- 行：灰度 -->
+        <div class="gcell glab">灰度试运营准备<span>体验版 + 真实凭证</span></div>
+        <div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack wknd"></div><div class="gcell gtrack wknd"></div><div class="gcell gtrack"></div>
+        <div class="gcell gtrack"><div class="bar info">推 1–2 家体验版</div></div>
+        <div class="gcell gtrack"><div class="bar info">切真实商户号</div></div>
+        <div class="gcell gtrack"><div class="bar info">压测 / 演练</div></div>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <b>真实上线（M9）不在 D10 之后立即发生</b>：它取决于 ICP 备案（1–20 工作日）与商户号办理。请在 D1 当天就让合伙人推进这两项，与开发完全并行 —— 否则 D7 交付的代码会「等米下锅」。
+    </div>
+  </section>
+
+  <!-- ==================== 05 里程碑 ==================== -->
+  <section id="s5">
+    <h2><span class="num">05</span>里程碑与阶段交付物</h2>
+    <p class="sub">每天一个里程碑，收盘即验收。M8 之后进入外部依赖区。</p>
+
+    <div class="tl">
+      <div class="tli"><h4>M0 · 计划冻结<span class="when">D1 09-22 09:00</span></h4><p>交付物：本计划 + 开发计划看板。判定：你拍板执行模式 / 工期 / 技术栈 3 项参数。</p></div>
+      <div class="tli"><h4>M1 · 地基与多租户贯通<span class="when">D1 09-22 收盘</span></h4><p>交付物：4 端空壳可运行 + 组件 Playground + 一键建租户 + 配置下发。判定：<b>验收节点 V1</b>。</p></div>
+      <div class="tli"><h4>M2 · 楼栋模型 + 双账本定型<span class="when">D2 09-23 收盘</span></h4><p>交付物：库存矩阵 API + 双账本 + 两道闸门 + 每日扣减任务。判定：<b>验收节点 V2</b>。</p></div>
+      <div class="tli"><h4>M3 · 学生能完整下单支付<span class="when">D3 09-24 收盘</span></h4><p>交付物：学生端 17 页 + 支付闭环 + 时间窗。判定：<b>验收节点 V3</b>（CS-01~CS-13）。</p></div>
+      <div class="tli"><h4>M4 · 商户能接单送单改库存<span class="when">D4 09-25 收盘</span></h4><p>交付物：商户小程序 10 页 + 订单状态机 + 退款 + 通知。判定：<b>验收节点 V4</b>（CM-01~CM-08）。</p></div>
+      <div class="tli"><h4>M5 · 批量与配置能力到位<span class="when">D5 09-26 收盘</span></h4><p>交付物：商户网页 11 页 + Excel 导入 + 主题色护栏。判定：<b>验收节点 V5</b>（CW-01~CW-10）。</p></div>
+      <div class="tli"><h4>M6 · 能开新户、能推版本<span class="when">D6 09-27 收盘</span></h4><p>交付物：平台后台 13 页 + 流水线 + 灰度推送 + 版本看板 + 对账。判定：<b>验收节点 V6</b>（CP-01~CP-11）。</p></div>
+      <div class="tli"><h4>M7 · v1.0 代码交付 ★<span class="when">D7 09-28 收盘</span></h4><p>交付物：4 端 51 页 + 42 闭环 + 20 条 AC + 种子数据 + 部署脚本 + 两本手册。判定：<b>验收节点 V7（总验收）</b>。</p></div>
+      <div class="tli"><h4>M8 · 灰度试运营就绪<span class="when">D10 10-01</span></h4><p>交付物：B4 增强项 + 体验版灰度推送 + 真实凭证接入（PayProvider 切真实）。判定：<b>验收节点 V8</b>。</p></div>
+      <div class="tli ext"><h4>M9 · 首个真实租户上线<span class="when">时间由外部决定</span></h4><p>交付物：流水线 12/12 完成 + 正式版发布 + 商户充值开通 + 首单真实闭环。判定：<b>验收节点 V9</b>。</p></div>
+      <div class="tli ext"><h4>M10 · 试运营观察期结束<span class="when">M9 + 7 天</span></h4><p>交付物：数据校验报告（零超卖 / 对账差额 0 / 隐私零泄漏 / 无滞留订单）。判定：<b>验收节点 V10</b>。</p></div>
+    </div>
+  </section>
+
+  <!-- ==================== 06 验收 ==================== -->
+  <section id="s6">
+    <h2><span class="num">06</span>验收节点与验收标准</h2>
+    <p class="sub">通过标准必须<b>可执行、可复现、可观察</b>，不是「看起来没问题」。点击方框可勾选，进度存在本地浏览器。</p>
+    <div class="note"><b>判定铁律</b>：任一节点不通过 → 当日缺陷当日清零，不跨日累积；<b>连续两次不通过 → 停下来重新裁定范围</b>。</div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V1</span><h4>地基与多租户</h4><span class="ctag">D1 09-22 收盘</span><span class="ctag">7 项</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v1-1"><div class="vtxt"><b>4 端均可编译运行</b><small><em>验证</em>dev:mp-weixin / dev:h5 均无 error</small></div><div class="vmeta">V1-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-2"><div class="vtxt"><b>全库无硬编码色值 / 字号 / 圆角（AC-04）</b><small><em>验证</em>全仓正则扫 色值 与 border-radius 固定 px，命中数 = 0</small></div><div class="vmeta">V1-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-3"><div class="vtxt"><b>组件 Playground 与设计系统一致</b><small><em>验证</em>36 类组件全状态逐一比对，截图存档</small></div><div class="vmeta">V1-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-4"><div class="vtxt"><b>一键建租户</b><small><em>验证</em>创建租户 → 选学校 → 楼栋模板自动带出 → 建库成功</small></div><div class="vmeta">V1-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-5"><div class="vtxt"><b>配置下发即时生效（不发版）</b><small><em>验证</em>后台新增一栋楼 → 学生端重新进入即看到</small></div><div class="vmeta">V1-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-6"><div class="vtxt"><b>单楼栋自动降级</b><small><em>验证</em>默认楼栋租户：学生端隐藏楼栋选择器、后台隐藏楼栋列</small></div><div class="vmeta">V1-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v1-7"><div class="vtxt"><b>租户未匹配不白屏</b><small><em>验证</em>未注册 AppID 请求 → 返回「店铺未开通」页</small></div><div class="vmeta">V1-7</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V2</span><h4>楼栋模型 + 双账本</h4><span class="ctag">D2 09-23 收盘</span><span class="ctag">10 项</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v2-1"><div class="vtxt"><b>配置继承正确</b><small><em>验证</em>楼栋不设值读店铺值；设值则覆盖；JSON 新增字段不建表</small></div><div class="vmeta">V2-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-2"><div class="vtxt"><b>两个同步语义不混（AC-10）</b><small><em>验证</em>API 与 UI 分离，各自声明「我不改什么」</small></div><div class="vmeta">V2-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-3"><div class="vtxt"><b>商品三态区分</b><small><em>验证</em>未上架不显示 / 上架且 0 显示售罄 / &gt;0 可加购</small></div><div class="vmeta">V2-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-4"><div class="vtxt"><b>零超卖（核心）</b><small><em>验证</em>并发 1000 请求库存 100 → 成功 100、失败 900、无负库存</small></div><div class="vmeta">V2-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-5"><div class="vtxt"><b>库存流水完整</b><small><em>验证</em>五类 type（下单/支付确认/取消释放/退款/人工调整/调拨）均可查</small></div><div class="vmeta">V2-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-6"><div class="vtxt"><b>扣减分毫不差</b><small><em>验证</em>200 笔跨日订单 → 余额账 = Σ(订单×2%)，差额 = 0</small></div><div class="vmeta">V2-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-7"><div class="vtxt"><b>退款返还</b><small><em>验证</em>退款成功生成返还流水，可回链 ref_order_no</small></div><div class="vmeta">V2-7</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-8"><div class="vtxt"><b>两道闸门独立显示</b><small><em>验证</em>平台租户列表同屏显示订阅剩余天数 + 余额，可分别停单</small></div><div class="vmeta">V2-8</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-9"><div class="vtxt"><b>中性文案</b><small><em>验证</em>全站搜「欠费」命中数 = 0</small></div><div class="vmeta">V2-9</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v2-10"><div class="vtxt"><b>楼栋不可删</b><small><em>验证</em>删除接口返回拒绝，只有停用；历史订单不受影响</small></div><div class="vmeta">V2-10</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V3</span><h4>学生端交易闭环</h4><span class="ctag">D3 09-24 收盘</span><span class="ctag ok">CS-01 ~ CS-13</span><span class="ctag">17 项</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v3-1"><div class="vtxt"><b>CS-01 进入与租户解析</b><small><em>验证</em>启动 → 骨架（不是转圈页）→ 首页；AppID 未匹配 → 店铺未开通页</small></div><div class="vmeta">V3-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-2"><div class="vtxt"><b>CS-02 楼栋选择与记忆</b><small><em>验证</em>本地 + 服务端都记住；下次直入该栋；单楼栋跳过</small></div><div class="vmeta">V3-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-3"><div class="vtxt"><b>CS-03 浏览与加购</b><small><em>验证</em>加购后立即展开步进器，不允许静默加购</small></div><div class="vmeta">V3-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-4"><div class="vtxt"><b>CS-04 下单与支付</b><small><em>验证</em>购物车→结算→地址→提交→支付→结果页；有「处理中」页兜银行延迟</small></div><div class="vmeta">V3-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-5"><div class="vtxt"><b>CS-05 履约跟踪 + AC-15</b><small><em>验证</em>待付款→待接单→配送中→已送达；学生端无「确认收货」</small></div><div class="vmeta">V3-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-6"><div class="vtxt"><b>CS-06 取消与退款</b><small><em>验证</em>超时/取消 → 退款 → 已退款 + 库存回补 + 服务费返还</small></div><div class="vmeta">V3-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-7"><div class="vtxt"><b>CS-07 缺货处理</b><small><em>验证</em>售罄项在购物车标灰保留（不静默移除）+ 显式「移出」</small></div><div class="vmeta">V3-7</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-8"><div class="vtxt"><b>CS-08 时间窗 + AC-02</b><small><em>验证</em>已截单用灰色 + 时钟图标 + 明确恢复时间；已截单不清空购物车</small></div><div class="vmeta">V3-8</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-9"><div class="vtxt"><b>CS-09 本栋停送</b><small><em>验证</em>切换楼栋 → 购物车清空 + 轻提示（不静默清空）</small></div><div class="vmeta">V3-9</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-10"><div class="vtxt"><b>CS-10 跨楼栋拦截</b><small><em>验证</em>地址楼栋 ≠ 购物车楼栋 → 标红拦截，商品不丢</small></div><div class="vmeta">V3-10</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-11"><div class="vtxt"><b>CS-11 楼栋未覆盖</b><small><em>验证</em>「没有找到你的楼栋？本店暂未覆盖」+ 列出覆盖范围</small></div><div class="vmeta">V3-11</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-12"><div class="vtxt"><b>CS-12 再来一单 / 地址簿</b><small><em>验证</em>按当前楼栋可用性过滤；支持送他人房间</small></div><div class="vmeta">V3-12</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-13"><div class="vtxt"><b>CS-13 订阅消息</b><small><em>验证</em>接单/送达各一条；站内红点兜底</small></div><div class="vmeta">V3-13</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-14"><div class="vtxt"><b>服务端二次校验楼栋</b><small><em>验证</em>篡改客户端 building_id 提交 → 服务端拒绝</small></div><div class="vmeta">V3-14</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-15"><div class="vtxt"><b>时间唯一真相源（AC-14）</b><small><em>验证</em>可否下单全由服务端判定，前端只做倒计时</small></div><div class="vmeta">V3-15</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-16"><div class="vtxt"><b>楼栋牌一致性（AC-01）</b><small><em>验证</em>6 个出现位置：高 44px / 圆角 10px / brand-500 实心 / 白字 / 无阴影无描边</small></div><div class="vmeta">V3-16</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v3-17"><div class="vtxt"><b>金额与库存等宽右对齐（AC-07）</b><small><em>验证</em>等宽数字字体 + 右对齐，上下行数字不错位</small></div><div class="vmeta">V3-17</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V4</span><h4>状态机 + 商户小程序</h4><span class="ctag">D4 09-25 收盘</span><span class="ctag ok">CM-01 ~ CM-08</span><span class="ctag">13 项</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v4-1"><div class="vtxt"><b>CM-01 登录与身份</b><small><em>验证</em>非管理员 → 「当前仅店主可登录」（D10 单管理员）</small></div><div class="vmeta">V4-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-2"><div class="vtxt"><b>CM-02 开关店</b><small><em>验证</em>二次确认写明影响范围；盘中订单不受影响；学生端即时可见</small></div><div class="vmeta">V4-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-3"><div class="vtxt"><b>CM-03 接单</b><small><em>验证</em>首 Tab 就是配送清单；新单红点 → 接单 → 待接单→配送中</small></div><div class="vmeta">V4-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-4"><div class="vtxt"><b>CM-04 配送清单（AC-03 硬项）★</b><small><em>反例</em>出现时间倒序 / 「由新到旧」切换 / 无行级热区 → 不通过</small></div><div class="vmeta">V4-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-5"><div class="vtxt"><b>CM-05 库存快改 + AC-08</b><small><em>验证</em>点格改数立即生效；减到 0 提示「已置为售罄·撤销」；改库存不弹确认框</small></div><div class="vmeta">V4-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-6"><div class="vtxt"><b>CM-06 单栋停送 + AC-17</b><small><em>验证</em>学生端显示「今日已停送」；停送后库存保留不清零</small></div><div class="vmeta">V4-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-7"><div class="vtxt"><b>CM-07 账户充值</b><small><em>验证</em>预警 → 指引 → 上账 → 到账通知 → 恢复接单；文案中性</small></div><div class="vmeta">V4-7</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-8"><div class="vtxt"><b>CM-08 退款处理</b><small><em>验证</em>同意/拒绝 → 学生收到结果；未送达回库 + 服务费返还</small></div><div class="vmeta">V4-8</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-9"><div class="vtxt"><b>回调幂等</b><small><em>验证</em>同一回调重复推送 10 次 → 状态与库存只变一次</small></div><div class="vmeta">V4-9</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-10"><div class="vtxt"><b>超时关单</b><small><em>验证</em>待付款超时 → 自动关单 + locked 释放回 stock</small></div><div class="vmeta">V4-10</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-11"><div class="vtxt"><b>送达自动完成兜底</b><small><em>验证</em>送达后 N 小时未操作 → 自动「已完成」，不依赖商户</small></div><div class="vmeta">V4-11</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-12"><div class="vtxt"><b>订单楼栋与房间号不可改</b><small><em>验证</em>提交后不可修改，只能取消重下</small></div><div class="vmeta">V4-12</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v4-13"><div class="vtxt"><b>一个订单不跨楼栋</b><small><em>验证</em>配送清单天然按栋分组，跨栋订单不可能出现</small></div><div class="vmeta">V4-13</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V5</span><h4>商户网页后台</h4><span class="ctag">D5 09-26 收盘</span><span class="ctag ok">CW-01 ~ CW-10</span><span class="ctag">14 项</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v5-1"><div class="vtxt"><b>CW-01 楼栋维护</b><small><em>验证</em>新增/改名/排序/停用/暂停/一键配置/时间窗；学生端立即生效无需发版</small></div><div class="vmeta">V5-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-2"><div class="vtxt"><b>CW-02 商品管理</b><small><em>验证</em>新建默认同步全部启用楼栋；下架 ≠ 售罄</small></div><div class="vmeta">V5-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-3"><div class="vtxt"><b>CW-03 库存矩阵</b><small><em>验证</em>商品为行、楼栋为列；两个同步分成两张独立卡（AC-10）</small></div><div class="vmeta">V5-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-4"><div class="vtxt"><b>库存格双重编码（AC-11）</b><small><em>验证</em>底色即状态 + 文字角标；黑白打印仍可辨读</small></div><div class="vmeta">V5-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-5"><div class="vtxt"><b>CW-04 Excel 导入</b><small><em>验证</em>错误带行号 + 人话原因；允许跳过错误行继续导入</small></div><div class="vmeta">V5-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-6"><div class="vtxt"><b>CW-05 订单管理</b><small><em>验证</em>可按楼栋筛/分组；退款处理 / 重新配送；含配送清单打印</small></div><div class="vmeta">V5-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-7"><div class="vtxt"><b>CW-06 时间窗配置</b><small><em>验证</em>系统自动算截单时间并早于门禁结束；超出部分自动截断并提示</small></div><div class="vmeta">V5-7</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-8"><div class="vtxt"><b>CW-07 店铺设置</b><small><em>验证</em>公告/营业时间/起送价/配送费/主题色 → 学生端即时生效</small></div><div class="vmeta">V5-8</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-9"><div class="vtxt"><b>CW-08 账本与账单</b><small><em>验证</em>每笔扣费可回链订单；汇总小票可导出</small></div><div class="vmeta">V5-9</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-10"><div class="vtxt"><b>CW-09 数据导出</b><small><em>验证</em>长任务可离开页面，文件落盘可下载</small></div><div class="vmeta">V5-10</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-11"><div class="vtxt"><b>CW-10 跨栋调拨</b><small><em>验证</em>来源栋 + 目标栋 + 数量 → 双方库存变化 + 双边流水</small></div><div class="vmeta">V5-11</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-12"><div class="vtxt"><b>主题色对比度护栏（AC-06）</b><small><em>验证</em>与白字对比 &lt; 4.5:1 → 自动加深整条色阶并提示原因</small></div><div class="vmeta">V5-12</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-13"><div class="vtxt"><b>状态色不参与换肤（AC-05）</b><small><em>验证</em>切换任意主题色后，成功/警告/危险/中性四色输出完全一致</small></div><div class="vmeta">V5-13</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v5-14"><div class="vtxt"><b>批量效率命门</b><small><em>验证</em>3 栋 × 50 SKU 建库从 150 次手工输入降到 1 次同步</small></div><div class="vmeta">V5-14</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V6</span><h4>平台后台 + 推送</h4><span class="ctag">D6 09-27 收盘</span><span class="ctag ok">CP-01 ~ CP-11</span><span class="ctag key">隐私护栏</span></div>
+      <div class="cbody">
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v6-1"><div class="vtxt"><b>CP-01 创建租户</b><small><em>验证</em>一键建库 + 带出楼栋模板 + 绑定 AppID/商户号 + 自动创建「默认楼栋」</small></div><div class="vmeta">V6-1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-2"><div class="vtxt"><b>CP-02 上线流水线</b><small><em>验证</em>12 阶段；卡点显示「卡了 N 天 + 上次触达」；驳回用琥珀不用红</small></div><div class="vmeta">V6-2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-3"><div class="vtxt"><b>CP-03 代码推送</b><small><em>验证</em>灰度 1–2 家 → 验证 → 批量（支持排除名单）→ 失败重推</small></div><div class="vmeta">V6-3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-4"><div class="vtxt"><b>CP-04 版本与发布看板</b><small><em>验证</em>三类筛选：还停在旧版本 / 已推送未提审 / 推送失败（含原因）</small></div><div class="vmeta">V6-4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-5"><div class="vtxt"><b>CP-05 两道闸门</b><small><em>验证</em>到期列表 + 余额预警 → 手动上账 → 自动解冻；15/7/3 天提醒送达</small></div><div class="vmeta">V6-5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-6"><div class="vtxt"><b>CP-06 对账</b><small><em>验证</em>订单数/流水/应收 2%/已扣/差额；未扣标红；差额 = 0 或已说明</small></div><div class="vmeta">V6-6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-7"><div class="vtxt"><b>CP-07 强制停用 / 恢复</b><small><em>验证</em>二次确认 → 立即锁单 + 前台提示 → 可恢复；数据保留</small></div><div class="vmeta">V6-7</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-8"><div class="vtxt"><b>CP-08 密钥管理</b><small><em>验证</em>加密入库；接口层面不返回明文，只可替换不可查看；失效告警</small></div><div class="vmeta">V6-8</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-9"><div class="vtxt"><b>CP-09 工单分流</b><small><em>验证</em>技术归你、经营归合伙人的路由规则生效</small></div><div class="vmeta">V6-9</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-10"><div class="vtxt"><b>CP-10 学校与楼栋模板</b><small><em>验证</em>预置学校 → 预置楼栋 → 建租户时带出 → 商户勾选</small></div><div class="vmeta">V6-10</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-11"><div class="vtxt"><b>CP-11 监控告警</b><small><em>验证</em>活跃度/订单量/支付异常/审核卡点/密钥失效；日志全部带 tenant_code</small></div><div class="vmeta">V6-11</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-12"><div class="vtxt"><b>AC-13 房间号不出商户库 ★</b><small><em>验证</em>平台全部页面 + 全部接口响应（抓包）无房间号字段；平台库表结构中不含该列</small></div><div class="vmeta">V6-12</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-13"><div class="vtxt"><b>AC-12 平台后台四色中性</b><small><em>验证</em>平台后台不出现任何租户主题色</small></div><div class="vmeta">V6-13</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v6-14"><div class="vtxt"><b>平台运营侧不可见房间级</b><small><em>验证</em>运营账号只能看到楼栋级，看不到房间号</small></div><div class="vmeta">V6-14</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V7</span><h4>v1.0 总验收</h4><span class="ctag">D7 09-28 收盘</span><span class="ctag key">硬门槛</span></div>
+      <div class="cbody">
+        <div class="note ok"><b>通过条件</b>：A 组 3/3 + B 组 7/7 全过 = v1.0 交付通过。任一项不过 → 当日修复，不带入 D8。</div>
+        <h3 style="margin-top:14px">A · 闭环与验收项</h3>
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v7-a1"><div class="vtxt"><b>42 / 42 条闭环全部走通并落到稳定终态</b><small><em>验证</em>学生 13 + 商户小程序 8 + 商户网页 10 + 平台 11，逐条录像/截图存档</small></div><div class="vmeta">V7-A1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-a2"><div class="vtxt"><b>20 / 20 条 AC-01~AC-20 全部通过</b><small><em>验证</em>逐项对照标准判定，任何反例出现即不通过</small></div><div class="vmeta">V7-A2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-a3"><div class="vtxt"><b>9 处断链风险 R-1~R-9 全部有兜底且可复现</b><small><em>验证</em>逐条构造场景</small></div><div class="vmeta">V7-A3</div></label>
+        </div>
+        <h3>B · 工程硬指标</h3>
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v7-b1"><div class="vtxt"><b>零超卖</b><small><em>验证</em>压测 5000 单，超卖单数 = 0</small></div><div class="vmeta">V7-B1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b2"><div class="vtxt"><b>对账差额 = 0</b><small><em>验证</em>应收 2% vs 已扣，差额 = 0</small></div><div class="vmeta">V7-B2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b3"><div class="vtxt"><b>回调幂等</b><small><em>验证</em>重复回调 10 次，数据只变一次</small></div><div class="vmeta">V7-B3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b4"><div class="vtxt"><b>房间号零泄漏</b><small><em>验证</em>平台库 / 平台报表 / 日志文件正则扫描，命中 = 0</small></div><div class="vmeta">V7-B4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b5"><div class="vtxt"><b>无硬编码 Token</b><small><em>验证</em>全仓扫色值 / 圆角，命中 = 0（AC-04）</small></div><div class="vmeta">V7-B5</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b6"><div class="vtxt"><b>演示数据就绪</b><small><em>验证</em>演示租户预置楼栋 + 商品 + 库存（否则空壳过不了审）</small></div><div class="vmeta">V7-B6</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-b7"><div class="vtxt"><b>一键部署</b><small><em>验证</em>干净机器上 docker compose up → 全链路可用，无手工步骤</small></div><div class="vmeta">V7-B7</div></label>
+        </div>
+        <h3>C · 交付物完整性</h3>
+        <div class="vlist">
+          <label class="vitem"><input type="checkbox" data-k="v7-c1"><div class="vtxt"><b>源码 + 迁移 + 种子</b><small>4 端源码（uni-app 单仓 + NestJS）+ Prisma 迁移 + 种子数据</small></div><div class="vmeta">V7-C1</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-c2"><div class="vtxt"><b>部署包</b><small>Docker Compose + Nginx + 环境变量模板 + README</small></div><div class="vmeta">V7-C2</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-c3"><div class="vtxt"><b>商户操作手册</b><small>楼栋维护 / 库存矩阵 / 时间窗 / 配送清单 / 充值</small></div><div class="vmeta">V7-C3</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-c4"><div class="vtxt"><b>平台运营手册</b><small>建租户 / 流水线 / 推送 / 闸门 / 对账</small></div><div class="vmeta">V7-C4</div></label>
+          <label class="vitem"><input type="checkbox" data-k="v7-c5"><div class="vtxt"><b>验收报告</b><small>42 闭环 + 20 AC + 9 断链的判定记录</small></div><div class="vmeta">V7-C5</div></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="cbox">
+      <div class="chd"><span class="cid">V8–V10</span><h4>灰度试运营 · 真实上线 · 观察期</h4><span class="ctag">D10 起 · 后半段由外部决定</span></div>
+      <div class="cbody">
+        <table class="cs">
+          <tr><th style="width:60px">节点</th><th style="width:120px">时点</th><th>须完成的功能</th><th>可验证条件</th></tr>
+          <tr>
+            <td class="m">V8</td><td class="m">D10 10-01</td>
+            <td>灰度推送 1–2 家体验版 · PayProvider 切真实商户号 · 真实上传密钥入库 · P1 增强项</td>
+            <td>体验版可下单可接单送达；1 分钱真实支付回调正常且余额扣费正确；平台后台看不到密钥明文；按楼栋报表与订单一致</td>
+          </tr>
+          <tr>
+            <td class="m">V9</td><td class="m">外部决定</td>
+            <td>流水线 12/12 完成（备案 + 商户号 + 类目 + 密钥）· 推送 → 提审 → 发布 · 商户充值开通 · 商户自助配置楼栋与库存</td>
+            <td>版本看板显示 released_at；正式版可搜索到；两道闸门放行且下单 6 条件全绿；首单真实闭环（学生下单→支付→接单→配送→送达→订阅消息）</td>
+          </tr>
+          <tr>
+            <td class="m">V10</td><td class="m">M9 + 7 天</td>
+            <td>试运营观察期数据校验</td>
+            <td>超卖 0 单 · 对账差额 0 · 平台侧房间号查询命中 0 · 「支付成功但订单未生成」0（巡检自动补单）· 无滞留订单（双兜底生效）</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 07 AC 落位 ==================== -->
+  <section id="s7">
+    <h2><span class="num">07</span>20 条验收项（AC）落位表</h2>
+    <p class="sub">AC-01 ~ AC-03 是上一轮确定列为正式验收项的「最容易被做走样」三处；AC-13 是隐私硬门槛。</p>
+    <table class="cs">
+      <tr><th style="width:64px">编号</th><th>验收项</th><th style="width:110px">首次验收</th><th style="width:80px">终验</th></tr>
+      <tr><td class="m">AC-01</td><td><b>楼栋牌不得被「改造」</b>：高 44px / r-md 10px / brand-500 实心 / 白字 / 无阴影无描边。禁改成圆角片、加投影、加渐变、改胶囊</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-02</td><td><b>「已截单」必须用灰色</b> + 时钟图标 + 明确恢复时间。禁红、禁橙、禁感叹号</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-03</td><td><b>配送清单不能被退回成「订单列表」</b>：必须空间序（楼栋→楼层→房间号），行级热区，勾完折叠成绿色「已全部送达」</td><td class="m">V4</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-04</td><td>Token 单一真相源：四端样式全部引用 :root 变量，无硬编码色值/字号/圆角</td><td class="m">V1</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-05</td><td>状态色不参与换肤：切换任意主题色后，成功/警告/危险/中性四色输出完全一致</td><td class="m">V5</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-06</td><td>主题色对比度护栏：与白字对比 &lt; 4.5:1 时自动加深整条色阶并提示原因</td><td class="m">V5</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-07</td><td>金额与库存永久等宽右对齐</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-08</td><td>可逆操作不弹确认：改库存、切楼栋、勾选送达均立即生效 + 给撤销</td><td class="m">V4</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-09</td><td>不可逆操作必须说清后果：关店、停用楼栋、强制停用写明影响范围与「不可撤销」</td><td class="m">V4</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-10</td><td>两个同步永不混淆：「同步上架」与「同步库存数值」是两张独立卡，各写明「我不改什么」</td><td class="m">V2</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-11</td><td>库存格双重编码：底色即状态 + 文字角标，不依赖单一颜色</td><td class="m">V5</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-12</td><td>平台后台永不接受租户主题色（四色中性）</td><td class="m">V6</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-13</td><td><b>房间号不出商户库</b>：平台任何页面、任何接口响应中都查不到（数据访问层不返回，非前端隐藏）</td><td class="m">V6</td><td class="m">V7 / V10</td></tr>
+      <tr><td class="m">AC-14</td><td>时间只有一个真相源：是否可下单、是否已截单全由服务端判定</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-15</td><td>学生端无「确认收货」：订单链到「已送达」即终态</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-16</td><td>每个空状态都有下一步：12 类空态全部给出「为什么空 + 现在能做什么」</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-17</td><td>停送 ≠ 清库存：停送后库存数值保留，恢复后自动生效，界面明写</td><td class="m">V4</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-18</td><td>楼层与房间号完整：地址卡含楼栋 + 楼层 + 房间号；订单与配送清单同样带楼层</td><td class="m">V3</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-19</td><td>骨架屏与真实布局同构：形状/数量/位置一致，不跳动</td><td class="m">V1</td><td class="m">V7</td></tr>
+      <tr><td class="m">AC-20</td><td>错误不清空页面：网络失败保留已有数据 + 顶部细条重试</td><td class="m">V3</td><td class="m">V7</td></tr>
+    </table>
+  </section>
+
+  <!-- ==================== 08 职责 ==================== -->
+  <section id="s8">
+    <h2><span class="num">08</span>职责划分（RACI）</h2>
+    <p class="sub"><span class="ra r">R</span> 负责执行 · <span class="ra a">A</span> 最终拍板 · <span class="ra c">C</span> 提供输入 · <span class="ra i">I</span> 被通知</p>
+
+    <table class="cs">
+      <tr><th style="width:250px">模块</th><th style="width:78px">AI 执行</th><th style="width:88px">人（决策）</th><th style="width:58px">商户</th><th style="width:66px">合伙人</th></tr>
+      <tr><td>多租户底座 / 楼栋模型</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra i">I</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>双账本 / 两道闸门</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>学生端 17 页</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra i">I</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>商户小程序 10 页（配送清单）</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>商户网页 11 页（库存矩阵）</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>平台后台 13 页</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra i">I</span></td><td><span class="ra c">C</span></td></tr>
+      <tr><td>订单状态机 / 库存并发</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>代码推送 / 版本看板</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra r">R</span></td><td><span class="ra c">C</span></td></tr>
+      <tr><td>隐私护栏（房间号）</td><td><span class="ra r">R</span></td><td><span class="ra a">A</span></td><td><span class="ra i">I</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>演示种子数据</td><td><span class="ra r">R</span></td><td><span class="ra c">C</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+      <tr><td>上线流水线推进</td><td><span class="ra i">I</span></td><td><span class="ra a">A</span></td><td><span class="ra r">R</span></td><td><span class="ra r">R</span></td></tr>
+      <tr><td>合规 / 技术服务协议</td><td><span class="ra i">I</span></td><td><span class="ra r">R</span></td><td><span class="ra c">C</span></td><td><span class="ra i">I</span></td></tr>
+    </table>
+
+    <h3>人的每日动作（决策点，共 5 项 · 约 30 分钟）</h3>
+    <div class="vlist">
+      <label class="vitem"><input type="checkbox" data-k="d-1"><div class="vtxt"><b>1. 判定当日验收节点是否通过</b><small>通过则放行下一天；不通过则当日缺陷当日清零</small></div><div class="vmeta">DAILY-1</div></label>
+      <label class="vitem"><input type="checkbox" data-k="d-2"><div class="vtxt"><b>2. 拍板当日歧义项</b><small>AI 打包成 ≤3 条一次性提问，不零散打断</small></div><div class="vmeta">DAILY-2</div></label>
+      <label class="vitem"><input type="checkbox" data-k="d-3"><div class="vtxt"><b>3. 确认隐私护栏</b><small>房间号是否出现在平台侧任何界面 / 接口 / 日志（AC-13）</small></div><div class="vmeta">DAILY-3</div></label>
+      <label class="vitem"><input type="checkbox" data-k="d-4"><div class="vtxt"><b>4. 推进外部依赖</b><small>ICP 备案、商户号、代码上传密钥 —— 这 3 项决定真实上线日</small></div><div class="vmeta">DAILY-4</div></label>
+      <label class="vitem"><input type="checkbox" data-k="d-5"><div class="vtxt"><b>5. 确认次日范围不变</b><small>如需变更，明确砍什么</small></div><div class="vmeta">DAILY-5</div></label>
+    </div>
+  </section>
+
+  <!-- ==================== 09 风险 ==================== -->
+  <section id="s9">
+    <h2><span class="num">09</span>风险与预案</h2>
+    <table class="cs">
+      <tr><th style="width:54px">#</th><th>风险</th><th style="width:58px">概率</th><th style="width:58px">影响</th><th>预案</th></tr>
+      <tr><td class="m">R1</td><td><b>真实上线被 ICP 备案卡死（1–20 工作日）</b></td><td><span class="tagp pv">高</span></td><td><span class="tagp pv">高</span></td><td>D1 就并行启动备案；D7 交付的代码与上线日解耦；备案期用体验版 + 演示租户先做运营演练</td></tr>
+      <tr><td class="m">R2</td><td>一周内无真实 AppID / 商户号</td><td><span class="tagp pv">高</span></td><td><span class="tagp pw">中</span></td><td>PayProvider / DeployProvider 双实现；沙箱期全链路 Mock 验收，D8 一行配置切真实</td></tr>
+      <tr><td class="m">R3</td><td>51 页 × 4 端工程量压进 7 天</td><td><span class="tagp pw">中</span></td><td><span class="tagp pv">高</span></td><td>以设计系统为唯一真相源批量复刻；规格型页面按字段表直出不看图；每日收盘 42/20 进度可见</td></tr>
+      <tr><td class="m">R4</td><td>楼栋模型定型后仍要改</td><td><span class="tagp pw">中</span></td><td><span class="tagp pv">极高</span></td><td>楼栋模型放在 S1（D1–D2）先做；<code>config_override</code> 兜住「未来加配置项不改表」</td></tr>
+      <tr><td class="m">R5</td><td>库存并发超卖</td><td><span class="tagp pw">中</span></td><td><span class="tagp pv">高</span></td><td>单条原子 UPDATE + 影响行数判定；V2 与 V4 各做一次 1000 并发压测</td></tr>
+      <tr><td class="m">R6</td><td><b>房间号泄漏到平台侧</b></td><td><span class="tagp pk">低</span></td><td><span class="tagp pv">极高（合规）</span></td><td>平台库表结构无该列 + 数据访问层不返回 + 日志脱敏中间件 + 单测断言 + V6/V10 两次扫描</td></tr>
+      <tr><td class="m">R7</td><td>批量推送一个 bug 让 N 家同时挂</td><td><span class="tagp pw">中</span></td><td><span class="tagp pv">高</span></td><td>D6 就实现灰度 + 排除名单；推 1–2 家验证后再批量</td></tr>
+      <tr><td class="m">R8</td><td>商户自行改代码 / 委托第三方改，与推送冲突</td><td><span class="tagp pw">中</span></td><td><span class="tagp pw">中</span></td><td>协议约定「代码以我方版本为准」；版本看板记录每次推送的 version 与 hash</td></tr>
+      <tr><td class="m">R9</td><td>上传密钥被商户重置</td><td><span class="tagp pw">中</span></td><td><span class="tagp pw">中</span></td><td>失效告警 + 一键重新收集流程 + 密钥只可替换不可查看</td></tr>
+      <tr><td class="m">R10</td><td>审核驳回</td><td><span class="tagp pv">高</span></td><td><span class="tagp pw">中</span></td><td>状态机内置「驳回」+ 驳回原因 + 返工队列；上线前预置演示商品与楼栋</td></tr>
+      <tr><td class="m">R11</td><td>校园强季节性（寒暑假订单归零）</td><td><span class="tagp pv">高</span></td><td><span class="tagp pw">中</span></td><td>到期日避开假期；资源可降配；租户库独立备份</td></tr>
+      <tr><td class="m">R12</td><td>决策带宽成为瓶颈</td><td><span class="tagp pw">中</span></td><td><span class="tagp pw">中</span></td><td>每日固定 1 次验收（30 min）；歧义项 AI 打包成 ≤3 条一次性提问</td></tr>
+    </table>
+  </section>
+
+  <div class="foot">
+    <b>闭环与验收项落位</b>：CS-01~13 → V3 ｜ CM-01~08 → V4 ｜ CW-01~10 → V5 ｜ CP-01~11 → V6 ｜ 全部 42 条 → V7 回归重跑 ｜ AC-01~20 → V1~V7 逐节点首次验收 + V7 终验。<br>
+    配套文档：《校园零食多租户小程序_开发计划与里程碑_v1.0.md》（权威全文）。依据：《需求与设计 v0.4》+《全量页面与闭环 v3.0》。
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var KEY='xy_plan_v1_checks';
+  var store={};
+  try{ store=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ store={}; }
+  var boxes=document.querySelectorAll('input[type=checkbox][data-k]');
+  boxes.forEach(function(b){
+    if(store[b.dataset.k]){ b.checked=true; b.closest('.vitem').classList.add('on'); }
+    b.addEventListener('change',function(){
+      store[b.dataset.k]=b.checked;
+      b.closest('.vitem').classList.toggle('on',b.checked);
+      try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){}
+    });
+  });
+})();
+</script>
+</body>
+</html>

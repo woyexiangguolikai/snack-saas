@@ -7,10 +7,12 @@ import SnSwitch from '../../components/SnSwitch.vue';
 import SnButton from '../../components/SnButton.vue';
 import SnChip from '../../components/SnChip.vue';
 import SnBuildingSheet from '../../components/SnBuildingSheet.vue';
+import SnBuildingBar from '../../components/SnBuildingBar.vue';
 import { useSessionStore } from '../../stores/session';
 import { useThemeStore } from '../../stores/theme';
 import { api } from '../../utils/api';
 import { toast } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-11b 地址新增 / 编辑。
@@ -128,14 +130,13 @@ async function submit(): Promise<void> {
 <template>
   <view class="ae" :style="theme.themeStyle">
     <SnNavBar :title="editingId ? '编辑地址' : '新增地址'" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="ae__scroll">
       <view class="ae__block">
         <text class="ae__label">宿舍楼</text>
-        <view class="ae__bchip" @click="showBuilding = true">
-          <text class="ae__bname">{{ buildingName }}</text>
-          <text class="ae__bchev">⌄</text>
-        </view>
+        <SnBuildingBar :name="buildingName" placeholder="选择宿舍楼" @pick="showBuilding = true" />
         <text class="ae__hint">地址的楼栋必须与下单的楼栋一致，否则下单会被拦下来</text>
       </view>
 
@@ -271,25 +272,7 @@ async function submit(): Promise<void> {
   font-weight: var(--fw-medium);
   color: var(--ink-700);
 }
-.ae__bchip {
-  height: 46px;
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-md);
-  background: var(--building-chip-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-}
-.ae__bname {
-  font-size: var(--fs-card);
-  font-weight: var(--fw-semibold);
-  color: var(--building-chip-fg);
-}
-.ae__bchev {
-  font-size: var(--fs-card);
-  color: var(--building-chip-fg);
-}
+/* 楼栋牌不再在此定义 —— 见 SnBuildingBar（AC-01 单一实现） */
 .ae__hint {
   display: block;
   margin-top: var(--sp-1);

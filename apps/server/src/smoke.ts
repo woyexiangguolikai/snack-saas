@@ -15,11 +15,12 @@ import { AppModule } from './app.module';
 import { AppLogger, redactString, sanitizeForLog, assertNoTenantPrivateFields } from './core/logger';
 import { AllExceptionsFilter } from './core/exception.filter';
 import { guardThemeColor, contrastRatio, DEFAULT_BRAND_SCALE } from '@snack/tokens';
-import { evaluateOrderGate } from './core/time-window';
+import { evaluateOrderGate, bizDayOf, bizMonthOf, bizDayStartOf } from './core/time-window';
 import { cutoffOf, narrowBusinessHours } from './core/config-resolver';
 import { BANNED_COPY } from './ledger/copy';
 import { FEE_BP, feeOfCents, ORDER_TIMEOUT, SUBSCRIPTION_WARN_DAYS } from './core/types';
 import { MemoryRepoFactory } from './core/memory.repository';
+import { REPO_FACTORY } from './core/repo.factory';
 import { env } from './core/env';
 import { StockService } from './catalog/stock.service';
 import { compareFloorRoom, mergeLines, naturalCompare } from './order/order.service';
@@ -1840,7 +1841,7 @@ check('退款驳回 → 回到退款前的状态（由时间戳倒推，不存�
 
 group('V4-8 定时任务：超时关单释放库存 + 送达兜底');
 
-check('30 分钟未支付 → 自动关单并释放预占', async () => {
+check('15 分钟未支付 → 自动关单并释放预占', async () => {
   const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 3 }] });
   const held = await cellOf(pA, bOrder);
   eq(held.locked >= 3, true, '下单后应有预占');
@@ -2011,10 +2012,1236 @@ check('手机端快改：免填理由也能改库存，但流水照样留痕', a
   assert(String(hit.operator).startsWith('owner:'), `操作人必须记为当前店主：${hit.operator}`);
 });
 
+/* ============================================ V5 商户网页后台契约（S5 的数据来源） */
+
+group('V5-1 订单管理列表（W-07）：全状态 · 可检索 · 真分页');
+
+check('列表给出 total 与 counts，且 counts 是全量口径（不随筛选变小）', async () => {
+  const all = await MER('GET', '');
+  eq(all.status, 200, JSON.stringify(all.body));
+  assert((all.body.items as unknown[]).length > 0, '前面用例下过单，订单管理不该是空的');
+  assert(typeof all.body.total === 'number', 'total 必须是数字（分页要靠它算页数）');
+  assert(all.body.counts && typeof all.body.counts === 'object', 'counts 必须与列表同源一次给出');
+
+  const filtered = await MER('GET', '?status=pending_accept,delivering');
+  eq(filtered.status, 200, JSON.stringify(filtered.body));
+  for (const it of filtered.body.items as Array<{ status: string }>) {
+    assert(
+      it.status === 'pending_accept' || it.status === 'delivering',
+      `状态筛选失效，混进了 ${it.status}`,
+    );
+  }
+  // 关键：筛选后 counts 不变。否则"待接单 3"点进去变成"待接单 3 / 共 3"，
+  // 用户再也看不出全场还有几单要处理
+  eq(
+    JSON.stringify(filtered.body.counts),
+    JSON.stringify(all.body.counts),
+    'counts 必须是全量口径 —— 跟着筛选变小会让状态标签失去意义',
+  );
+});
+
+check('分页：limit 生效、offset 换页不重不漏', async () => {
+  const all = await MER('GET', '?limit=200');
+  const total = all.body.total as number;
+  assert(total >= 2, `本组需要至少 2 单才能验证分页，实际 ${total}`);
+
+  const p0 = await MER('GET', '?limit=1&offset=0');
+  const p1 = await MER('GET', '?limit=1&offset=1');
+  eq((p0.body.items as unknown[]).length, 1, 'limit=1 应只回 1 条');
+  eq((p1.body.items as unknown[]).length, 1);
+  assert(
+    (p0.body.items as Array<{ orderNo: string }>)[0].orderNo !==
+      (p1.body.items as Array<{ orderNo: string }>)[0].orderNo,
+    '相邻两页不应是同一单（offset 没生效）',
+  );
+  eq(p0.body.total, total, 'total 不应随分页变化');
+});
+
+check('检索：按房间号能定位到单（商户接电话时的真实用法）', async () => {
+  const all = await MER('GET', '?limit=200');
+  const first = (all.body.items as Array<{ room: string; orderNo: string }>)[0];
+  const hit = await MER('GET', `?keyword=${encodeURIComponent(first.room)}`);
+  eq(hit.status, 200, JSON.stringify(hit.body));
+  assert(
+    (hit.body.items as Array<{ orderNo: string }>).some((i) => i.orderNo === first.orderNo),
+    `按房间号 ${first.room} 应能搜到 ${first.orderNo}`,
+  );
+});
+
+check('学生令牌拿不到订单管理列表 —— 房间号只在店主侧', async () => {
+  const r = await req('GET', `/t/${t1}/api/merchant/orders`, { token: stuTokenRef.a });
+  // 403 而不是 401：他有身份（学生令牌合法），只是不是店主。
+  // 这两个码混用会让前端把"你没权限"提示成"请重新登录"，用户点了登录还是一样的结果
+  eq(r.status, 403, `学生令牌调商户订单列表应 403，实际 ${r.status}`);
+});
+
+group('V5-2 网页后台登录码：店主可签发 · 一次性 · 学生签不出');
+
+check('店主签发 → 换回 owner 令牌 → 同一个码第二次作废', async () => {
+  const c = await req('POST', `/t/${t1}/api/merchant/session/web-login-code`, { token: t1OwnerToken });
+  eq(c.status, 200, JSON.stringify(c.body));
+  assert(/^\d{6}$/.test(String(c.body.code)), `登录码应为 6 位数字，实际 ${c.body.code}`);
+  assert(c.body.expiresAt, '必须给出过期时间 —— 只给码不给时间，店主不知道该快点敲还是可以慢慢来');
+
+  // 注意前缀是 /api/tenant（不是 /api/platform）—— 兑换端没有平台密钥，码本身就是凭据
+  const ok = await req('POST', '/api/tenant/merchant/web-login', {
+    body: { tenantCode: t1, code: c.body.code },
+  });
+  eq(ok.status, 200, JSON.stringify(ok.body));
+  eq(ok.body.role, 'owner', '换回的必须是店主令牌');
+  assert(ok.body.token, '应返回令牌');
+
+  const again = await req('POST', '/api/tenant/merchant/web-login', {
+    body: { tenantCode: t1, code: c.body.code },
+  });
+  eq(again.status, 403, `登录码必须一次性，第二次应 403，实际 ${again.status}`);
+  // 不区分"不存在 / 过期 / 已用过" —— 区分了就等于帮撞码的人缩小范围
+  assert(
+    !/不存在/.test(String(again.body.message ?? '')),
+    `失败原因不该暴露码是否存在：${again.body.message}`,
+  );
+});
+
+check('学生令牌签不出登录码（签发登录码 ≈ 签发 24 小时店主令牌）', async () => {
+  const r = await req('POST', `/t/${t1}/api/merchant/session/web-login-code`, { token: stuTokenRef.a });
+  eq(r.status, 403, `学生令牌应 403（有身份但没权限），实际 ${r.status}`);
+});
+
+/* ============================================================================
+ * S6 · 平台后台 + 上线流水线（P-01~P-13 / CP-01~CP-11）
+ * ==========================================================================*/
+
+/**
+ * 造一个"可被推送"的租户：建户 → 12 阶段走完 → 上传密钥到手。
+ *
+ * 为什么不用"直接改库把状态设成 active"：那样测的就不是真实路径了。
+ * 批量推送的前置条件恰恰是"这户走完了流水线"，绕过它等于把这个前置条件删掉。
+ */
+async function makeActiveTenant(appid: string, shopName: string): Promise<string> {
+  const created = await PLATFORM('POST', '/tenants', {
+    body: { shopName, orgName: `${shopName}（个体工商户）`, appid, buildingNames: ['1 号楼'] },
+  });
+  eq(created.status, 201, `建租户失败：${JSON.stringify(created.body)}`);
+  const code = created.body.tenant.tenantCode as string;
+
+  for (let i = 1; i <= 12; i += 1) {
+    const r = await PLATFORM('POST', `/pipeline/${code}/stages/${i}/complete`, { body: {} });
+    eq(r.status, 200, `推进第 ${i} 阶段失败：${JSON.stringify(r.body)}`);
+  }
+
+  const secret = await PLATFORM('POST', '/secrets', {
+    body: { tenantCode: code, kind: 'upload_key', value: `key-${appid}-0123456789abcdef`, remark: '冒烟夹具' },
+  });
+  eq(secret.status, 200, `写密钥失败：${JSON.stringify(secret.body)}`);
+
+  return code;
+}
+
+
+/** S6 用例的共享夹具（集中声明 —— 分散在用例中间会踩到 let 的暂时性死区） */
+let grayTenantA = '';
+let grayTenantB = '';
+let grayTenantC = '';
+let fakeTenants: string[] = [];
+let pipelineHalfTenant = '';
+let smokeVersionId = 0;
+let smokeSecretPlain = '';
+group('V6-1 上线流水线：卡点天数 · 上次触达 · 驳回返工（P-04 / P-05）');
+
+check('看板给出 12 阶段定义与每户的当前卡点', async () => {
+  grayTenantA = await makeActiveTenant('wx' + 'a1'.repeat(8), '冒烟灰度 A 店');
+  grayTenantB = await makeActiveTenant('wx' + 'b2'.repeat(8), '冒烟灰度 B 店');
+  grayTenantC = await makeActiveTenant('wx' + 'c3'.repeat(8), '冒烟灰度 C 店');
+
+  const r = await PLATFORM('GET', '/pipeline/board');
+  eq(r.status, 200, JSON.stringify(r.body));
+  eq(r.body.stageNames.length, 12, '上线流水线固定 12 阶段');
+  eq(r.body.stageNames[0].no, 1);
+  eq(r.body.stageNames[11].no, 12);
+
+  const row = (r.body.items as Array<{ tenantCode: string; doneCount: number; status: string }>).find(
+    (x) => x.tenantCode === grayTenantA,
+  );
+  assert(row, '刚建好的租户必须出现在看板上');
+  eq(row.doneCount, 12, '12 阶段走完应该是 12/12');
+  // 走完 12 阶段 = 可营业。不自动置 active 的话，这户会在"闸门都正常"的状态下被漏掉
+  eq(row.status, 'active', '12 阶段走完必须自动成为 active，否则谁也没发现这户没被放开');
+});
+
+check('未完成的租户：卡点天数与责任方都算出来（推动权在谁手上要看得到）', async () => {
+  const created = await PLATFORM('POST', '/tenants', {
+    body: { shopName: '冒烟半程店', orgName: '冒烟半程店（个体户）', appid: 'wx' + 'e5'.repeat(8), buildingNames: ['1 号楼'] },
+  });
+  const code = created.body.tenant.tenantCode as string;
+
+  // 走到第 3 步停下（第 3 步是商户本人注册小程序 —— 我方代不了）
+  for (let i = 1; i <= 3; i += 1) {
+    await PLATFORM('POST', `/pipeline/${code}/stages/${i}/complete`, { body: {} });
+  }
+
+  const view = (await PLATFORM('GET', `/pipeline/${code}`)).body;
+  eq(view.currentStageNo, 4, '第 1–3 步完成后应停在 ICP 备案');
+  eq(view.currentOwner, 'renter', '备案的责任方是商户 —— 显示"我方超期"会让人去催错的人');
+  eq(view.external, true, '备案是不可控的外部环节（1–20 个工作日）');
+  assert(typeof view.stuckDays === 'number', '必须给出已卡天数');
+  eq(view.lastContactedAt, null, '还没催过就该是 null，而不是当前时间');
+
+  // 记录触达 → 上次触达时间落库
+  const touched = await PLATFORM('POST', `/pipeline/${code}/stages/4/touch`, { body: { note: '微信催了一次备案进度' } });
+  eq(touched.status, 200, JSON.stringify(touched.body));
+  const after = (await PLATFORM('GET', `/pipeline/${code}`)).body;
+  assert(after.lastContactedAt, '触达后必须有时间 —— 否则"催过没有"这个问题永远答不上来');
+
+  // 记住它给后面用
+  pipelineHalfTenant = code;
+});
+
+check('驳回：必须写原因，驳回后进返工队列，重提后闭环', async () => {
+  const code = pipelineHalfTenant;
+  const stageNo = 4;
+
+  const noReason = await PLATFORM('POST', `/pipeline/${code}/stages/${stageNo}/reject`, { body: { reason: '   ' } });
+  eq(noReason.status, 400, '没写原因的驳回应被拒绝');
+  eq(noReason.body.error.code, 'VALIDATION_FAILED');
+
+  const rejected = await PLATFORM('POST', `/pipeline/${code}/stages/${stageNo}/reject`, {
+    body: { reason: 'ICP 备案主体与执照不一致，请重新提交' },
+  });
+  eq(rejected.status, 200, JSON.stringify(rejected.body));
+  const stage = (rejected.body.stages as Array<{ stageNo: number; status: string; rejectReason: string }>).find(
+    (s) => s.stageNo === stageNo,
+  );
+  eq(stage?.status, 'rejected');
+  assert(stage?.rejectReason?.includes('执照'), '驳回原因必须原样保存 —— 返工的人只能看到这句话');
+
+  const queue = await PLATFORM('GET', '/pipeline/rework');
+  eq(queue.status, 200);
+  const item = (queue.body.items as Array<{ tenantCode: string; stageNo: number; waitingDays: number; rejectReason: string }>).find(
+    (x) => x.tenantCode === code && x.stageNo === stageNo,
+  );
+  assert(item, '驳回未重提的单必须进返工队列');
+  assert(typeof item.waitingDays === 'number', '返工队列要能回答"驳回后卡了几天"');
+
+  const resubmitted = await PLATFORM('POST', `/pipeline/${code}/stages/${stageNo}/resubmit`, { body: {} });
+  eq(resubmitted.status, 200);
+  const after = (resubmitted.body.stages as Array<{ stageNo: number; status: string; rejectReason: string | null }>).find(
+    (s) => s.stageNo === stageNo,
+  );
+  eq(after?.status, 'doing', '重提后应回到进行中');
+  assert(after?.rejectReason, '驳回原因必须保留 —— 重提不代表"这事没发生过"');
+
+  const queue2 = await PLATFORM('GET', '/pipeline/rework');
+  const stillThere = (queue2.body.items as Array<{ tenantCode: string }>).some((x) => x.tenantCode === code);
+  eq(stillThere, false, '重提后必须从返工队列消失，否则队列会越滚越长没人看');
+});
+
+group('V6-2 灰度推送：先 1–2 家 → 验证 → 批量（P-07 / CP-03）');
+
+check('灰度最多 2 家 —— 这条是硬拦不是提示', async () => {
+  const v = await PLATFORM('POST', '/deploy/versions', { body: { version: '0.1.0', note: '首个体验版' } });
+  eq(v.status, 200, JSON.stringify(v.body));
+  smokeVersionId = v.body.id;
+
+  const over = await PLATFORM('POST', '/deploy/push', {
+    body: { versionId: smokeVersionId, tenantCodes: [grayTenantA, grayTenantB, grayTenantC], kind: 'gray' },
+  });
+  eq(over.status, 400, '灰度推 3 家必须被拒绝');
+  assert(over.body.error.message.includes('最多 2 家'), `错误信息要说清限制：${over.body.error.message}`);
+});
+
+check('灰度推送 2 家全部成功，且批次可查', async () => {
+  const r = await PLATFORM('POST', '/deploy/push', {
+    body: { versionId: smokeVersionId, tenantCodes: [grayTenantA, grayTenantB], kind: 'gray', operator: 'smoke' },
+  });
+  eq(r.status, 200, JSON.stringify(r.body));
+  eq(r.body.batch.succeeded, 2, 'mock 环境下灰度 2 家应全成功');
+  eq(r.body.batch.failed, 0);
+  eq(r.body.batch.status, 'done');
+});
+
+check('批量推送前必须先灰度通过（防的是"图省事直接全量"）', async () => {
+  const v2 = await PLATFORM('POST', '/deploy/versions', { body: { version: '0.2.0', note: '没灰度过' } });
+  const blocked = await PLATFORM('POST', '/deploy/push', {
+    body: { versionId: v2.body.id, tenantCodes: [grayTenantA, grayTenantB], kind: 'batch' },
+  });
+  eq(blocked.status, 400, '没灰度过就批量推送必须被拒绝');
+  assert(
+    blocked.body.error.message.includes('灰度'),
+    `错误信息要告诉人怎么办：${blocked.body.error.message}`,
+  );
+});
+
+check('mock 环境批量推送 20 个伪 AppID 全成功', async () => {
+  fakeTenants = [];
+  for (let i = 0; i < 18; i += 1) {
+    const hex = i.toString(16).padStart(2, '0');
+    const code = await makeActiveTenant(`wx${hex}${'d4'.repeat(7)}`, `冒烟批量店 ${i + 1}`);
+    fakeTenants.push(code);
+  }
+  eq(fakeTenants.length, 18, '夹具应建出 18 家');
+
+  const targets = [grayTenantA, grayTenantB, ...fakeTenants];
+  eq(targets.length, 20, '本用例要推 20 家');
+
+  const r = await PLATFORM('POST', '/deploy/push', {
+    body: { versionId: smokeVersionId, tenantCodes: targets, kind: 'batch', operator: 'smoke' },
+  });
+  eq(r.status, 200, JSON.stringify(r.body).slice(0, 400));
+  eq(r.body.batch.totalTargets, 20);
+  eq(r.body.batch.succeeded, 20, `20 家全成功，实际失败 ${r.body.batch.failed}：${JSON.stringify(r.body.targets.filter((t: any) => !t.ok).slice(0, 3))}`);
+
+  // 逐条核对，而不是只看汇总 —— 汇总对而明细错是最难查的一类
+  const rows = r.body.targets as Array<{ ok: boolean; pushedAt: string | null; version: string }>;
+  eq(rows.length, 20);
+  for (const row of rows) {
+    eq(row.ok, true);
+    assert(row.pushedAt, '成功推送必须有时间');
+    eq(row.version, '0.1.0', '目标行必须带上版本号（看板要按版本筛选，不能靠回表 join）');
+  }
+});
+
+check('排除名单生效：被排除的租户既不算成功也不算失败', async () => {
+  const r = await PLATFORM('POST', '/deploy/push', {
+    body: {
+      versionId: smokeVersionId,
+      tenantCodes: [grayTenantA, grayTenantB, ...fakeTenants.slice(0, 3)],
+      exclude: [fakeTenants[0]],
+      kind: 'batch',
+      operator: 'smoke',
+      confirmedGrayPassed: true,
+    },
+  });
+  eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+  eq(r.body.batch.totalTargets, 4, '选了 5 家、排除 1 家 → 目标 4 家');
+  assert(
+    (r.body.skipped as string[]).some((s) => s.includes(fakeTenants[0])),
+    '跳过原因必须写清是"在排除名单内"，否则用户会以为漏推了',
+  );
+});
+
+check('回滚：把上一版重新推给这一批成功过的租户，并单独记一批', async () => {
+  const batches = await PLATFORM('GET', '/deploy/batches');
+  const last = (batches.body.items as Array<{ id: number; succeeded: number }>)[0];
+  const vPrev = await PLATFORM('POST', '/deploy/versions', { body: { version: '0.0.9', note: '回滚目标版本' } });
+
+  const r = await PLATFORM('POST', `/deploy/batches/${last.id}/rollback`, {
+    body: { previousVersionId: vPrev.body.id, operator: 'smoke' },
+  });
+  eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+  assert((r.body.targets as unknown[]).length > 0, '回滚必须真的推了东西');
+
+  // 原批次标记为已回滚 —— 看板上要能看出"这批被回滚过"，而不是凭空多一次推送
+  const after = await PLATFORM('GET', '/deploy/batches');
+  const origin = (after.body.items as Array<{ id: number; status: string }>).find((b) => b.id === last.id);
+  eq(origin?.status, 'rolled_back', '原批次状态必须变成 rolled_back');
+
+  const rolled = (after.body.items as Array<{ kind: string }>).some((b) => b.kind === 'rollback');
+  assert(rolled, '回滚要单独记一批（kind=rollback），否则看板上会凭空多出一次推送');
+});
+
+group('V6-3 版本与发布看板：三类筛选对应平台唯一能做的三件事（P-06）');
+
+
+check('四类筛选与统计卡口径一致', async () => {
+  const board = await PLATFORM('GET', '/deploy/board');
+  eq(board.status, 200, JSON.stringify(board.body).slice(0, 300));
+  assert(board.body.latestVersion, '应有最新版本号');
+  assert(board.body.provider === 'mock' || board.body.provider === 'miniprogram-ci', '要说明当前用的是哪个推送通道');
+
+  const s = board.body.stats;
+  eq(s.total, s.onLatest + s.stale + s.unsubmitted + s.failed + s.neverPushed, '统计卡之和必须等于租户总数，否则一定有户掉在缝里');
+  eq(board.body.filters.all, s.total);
+
+  for (const f of ['stale', 'unsubmitted', 'failed'] as const) {
+    const r = await PLATFORM('GET', `/deploy/board?filter=${f}`);
+    eq(r.status, 200);
+    eq((r.body.items as unknown[]).length, board.body.filters[f], `筛选 ${f} 的行数必须与计数一致`);
+  }
+});
+
+check('回填提审 / 发布：推动权在商户，平台只能记（不假装能自动同步）', async () => {
+  // 挑一家"最近一次推送就是 0.1.0"的租户。
+  // 看板行显示的是**该租户最近一次推送的版本**的状态 —— 所以刚被回滚过的租户
+  // 不能拿来验证回填，否则测的是"回滚对不对"而不是"回填有没有生效"。
+  const target = fakeTenants[10];
+
+  const r = await PLATFORM('POST', `/deploy/${target}/version/0.1.0/submitted`, { body: {} });
+  eq(r.status, 200, JSON.stringify(r.body));
+  eq(r.body.submitted, true);
+
+  const p = await PLATFORM('POST', `/deploy/${target}/version/0.1.0/published`, { body: {} });
+  eq(p.status, 200);
+  eq(p.body.published, true);
+
+  const board = await PLATFORM('GET', '/deploy/board');
+  const row = (board.body.items as Array<{ tenantCode: string; published: boolean; currentVersion: string }>).find(
+    (x) => x.tenantCode === target,
+  );
+  assert(row, '该租户应在看板上');
+  eq(row?.currentVersion, '0.1.0', '最近一次成功推送的版本就是它当前跑的版本');
+  eq(row?.published, true, '回填后必须体现在看板上');
+  eq((row?.published as boolean) && board.body.stats.onLatest >= 1, true, '已发布最新版的租户应计入 onLatest');
+});
+
+group('V6-4 密钥管理：只可替换不可查看（P-12 / CP-08）');
+
+
+check('写入密钥后，**没有任何接口**返回明文', async () => {
+  smokeSecretPlain = 'upload-key-PLAINTEXT-must-never-leak-1234567890';
+  const put = await PLATFORM('POST', '/secrets', {
+    body: { tenantCode: t1, kind: 'upload_key', value: smokeSecretPlain, remark: '冒烟用' },
+  });
+  eq(put.status, 200, JSON.stringify(put.body));
+  assert(!JSON.stringify(put.body).includes(smokeSecretPlain), '写入响应里不能回显明文');
+  assert(put.body.masked.includes('****'), `要返回掩码，实际 ${put.body.masked}`);
+  assert(!('cipher' in put.body), '响应里连密文字段都不该有 —— 有字段就迟早有人去解它');
+
+  const list = await PLATFORM('GET', `/secrets?tenantCode=${t1}`);
+  eq(list.status, 200);
+  // 这是本用例的核心断言：把整个响应序列化后搜明文
+  assert(
+    !JSON.stringify(list.body).includes(smokeSecretPlain),
+    '列表接口绝不允许出现明文（这是"只可替换不可查看"的可执行定义）',
+  );
+  assert(!JSON.stringify(list.body).includes('cipher'), '列表也不能带 cipher 字段');
+
+  const one = (list.body.items as Array<{ kind: string; masked: string }>).find((x) => x.kind === 'upload_key');
+  assert(one, '刚写的密钥应能查到');
+  eq(one?.masked, `${smokeSecretPlain.slice(0, 4)}****`, '掩码只露前 4 位');
+});
+
+check('替换即覆盖：旧密钥不留在任何地方（留副本 = 可查看的后门）', async () => {
+  const second = 'upload-key-SECOND-VERSION-0987654321';
+  await PLATFORM('POST', '/secrets', { body: { tenantCode: t1, kind: 'upload_key', value: second } });
+
+  const list = await PLATFORM('GET', `/secrets?tenantCode=${t1}`);
+  const body = JSON.stringify(list.body);
+  assert(!body.includes(smokeSecretPlain), '替换后旧密钥不能还查得到');
+  assert(!body.includes(second), '新密钥也不能查得到');
+
+  const items = (list.body.items as Array<{ tenantCode: string; kind: string }>).filter(
+    (x) => x.tenantCode === t1 && x.kind === 'upload_key',
+  );
+  eq(items.length, 1, '同一租户同一类型只能有一条记录（替换不是新增）');
+});
+
+check('未收集的密钥要显式列出来 —— 否则界面上会以为全齐了', async () => {
+  const list = await PLATFORM('GET', '/secrets');
+  eq(list.status, 200);
+  const missing = list.body.missing as Array<{ tenantCode: string; kind: string }>;
+  assert(missing.length > 0, '刚建的 18 家批量店都没支付证书，必须出现在"未收集"里');
+  assert(
+    missing.some((m) => m.kind === 'pay_cert'),
+    '支付证书是常见的"还没办下来"项，不能只列已有的',
+  );
+});
+
+check('密钥失效 → 状态变更 + 告警（R9 的兜底：不做就是"推送莫名全失败"）', async () => {
+  const r = await PLATFORM('POST', `/secrets/${t1}/upload_key/invalidate`, {
+    body: { reason: '商户在微信后台重置了上传密钥' },
+  });
+  eq(r.status, 200, JSON.stringify(r.body));
+  eq(r.body.status, 'invalid');
+
+  const scan = await PLATFORM('POST', '/alerts/scan', { body: {} });
+  eq(scan.status, 200, JSON.stringify(scan.body).slice(0, 300));
+
+  const alerts = await PLATFORM('GET', '/alerts');
+  const hit = (alerts.body.items as Array<{ kind: string; tenantCode: string; level: string }>).find(
+    (a) => a.kind === 'secret_invalid' && a.tenantCode === t1,
+  );
+  assert(hit, '密钥失效必须产生告警');
+  eq(hit?.level, 'danger', '密钥失效是"下一次推送必然失败"，等级应是 danger');
+
+  // 恢复：重新写入即回到 active（替换语义天然支持"重新收集"）
+  await PLATFORM('POST', '/secrets', { body: { tenantCode: t1, kind: 'upload_key', value: 'recollected-key-abcdef123456' } });
+  const after = await PLATFORM('GET', `/secrets?tenantCode=${t1}`);
+  const active = (after.body.items as Array<{ kind: string; status: string }>).find((x) => x.kind === 'upload_key');
+  eq(active?.status, 'active', '重新收集后应回到 active');
+});
+
+group('V6-5 监控告警：五类 · 幂等（P-10 / CP-11）');
+
+check('巡检幂等：同一自然日重复跑不会刷屏', async () => {
+  const first = await PLATFORM('POST', '/alerts/scan', { body: {} });
+  const createdFirst = (first.body.created as unknown[]).length;
+
+  const second = await PLATFORM('POST', '/alerts/scan', { body: {} });
+  eq(
+    (second.body.created as unknown[]).length,
+    0,
+    `巡检每 30 分钟跑一次，没有幂等键的话一天能刷 48 条一样的告警（首次创建了 ${createdFirst} 条）`,
+  );
+
+  const alerts = await PLATFORM('GET', '/alerts');
+  const open = (alerts.body.items as Array<{ ackAt: string | null }>).filter((a) => a.ackAt === null);
+  assert(open.length > 0, '刚扫过应有待处理告警');
+});
+
+check('活跃度告警：连续 7 天无订单（now 可注入 → 不用真等一周）', async () => {
+  const future = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const r = await PLATFORM('POST', '/alerts/scan', { body: { now: future } });
+  eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+  assert(
+    (r.body.checked as { idle: number }).idle > 0,
+    '把时间推到 30 天后，有过单的租户都应被判为不活跃 —— 若为 0，说明这条告警永远不会触发',
+  );
+
+  const alerts = await PLATFORM('GET', '/alerts');
+  const idle = (alerts.body.items as Array<{ kind: string }>).find((a) => a.kind === 'tenant_activity');
+  assert(idle, '应产生活跃度告警');
+});
+
+check('告警可确认（处理过就要从待办里消失）', async () => {
+  const alerts = await PLATFORM('GET', '/alerts?open=1');
+  const first = (alerts.body.items as Array<{ id: number; ackAt: string | null }>)[0];
+  assert(first, '应有待处理告警');
+  eq(first.ackAt, null);
+
+  const r = await PLATFORM('POST', `/alerts/${first.id}/ack`, { body: { by: 'smoke' } });
+  eq(r.status, 200);
+  assert(r.body.ackAt, '确认后必须有时间与确认人');
+
+  const after = await PLATFORM('GET', '/alerts?open=1');
+  assert(
+    !(after.body.items as Array<{ id: number }>).some((a) => a.id === first.id),
+    '已确认的告警不该出现在待处理列表里',
+  );
+});
+
+group('V6-6 工单：分类决定流向（P-11 / CP-09）');
+
+check('技术归我方、经营归合伙人 —— 分类错了就等于工单没被处理', async () => {
+  const tech = await PLATFORM('POST', '/tickets', {
+    body: { tenantCode: t1, title: '推送一直失败', category: 'tech', createdBy: 'smoke' },
+  });
+  eq(tech.status, 200, JSON.stringify(tech.body));
+  eq(tech.body.assignee, 'platform', '技术类归我方');
+
+  const ops = await PLATFORM('POST', '/tickets', {
+    body: { tenantCode: t1, title: '想让合伙人帮忙跑一趟学校', category: 'operation', createdBy: 'smoke' },
+  });
+  eq(ops.body.assignee, 'partner', '经营类归合伙人');
+
+  const bad = await PLATFORM('POST', '/tickets', { body: { title: '没分类', category: 'unknown' } });
+  eq(bad.status, 400, '分类是必填且必须合法 —— 没有分类就没人知道该谁接');
+
+  const list = await PLATFORM('GET', '/tickets');
+  assert((list.body.summary as { partner: number }).partner >= 1, '合伙人手里的单要单独统计 —— 这一项就是"分流"本身');
+});
+
+check('处理记录追加式：改状态同时留痕，不覆盖历史', async () => {
+  const created = await PLATFORM('POST', '/tickets', { body: { title: '买家问能不能开发票', category: 'billing', createdBy: 'smoke' } });
+  const id = created.body.id;
+
+  await PLATFORM('PATCH', `/tickets/${id}`, { body: { by: 'smoke', text: '已联系商户，确认可开电子发票' } });
+  await PLATFORM('PATCH', `/tickets/${id}`, { body: { by: 'smoke', text: '已答复商户', status: 'closed' } });
+
+  const detail = await PLATFORM('GET', `/tickets/${id}`);
+  eq(detail.status, 200);
+  eq((detail.body.logs as unknown[]).length, 2, '两条记录都要在 —— 覆盖式更新会让"谁在什么时候说了什么"消失');
+  eq(detail.body.status, 'closed');
+  assert(detail.body.closedAt, '关闭必须有时间');
+});
+
+group('V6-7 停用 / 恢复（CP-07）：锁单但保留数据');
+
+check('停用必须写原因；停用后同状态重复操作被拒', async () => {
+  const noReason = await PLATFORM('POST', `/tenants/${grayTenantB}/status`, { body: { action: 'suspend' } });
+  eq(noReason.status, 400, '停用会直接影响商户生意，必须留原因');
+
+  const ok = await PLATFORM('POST', `/tenants/${grayTenantB}/status`, {
+    body: { action: 'suspend', reason: '冒烟用例：模拟违规停用' },
+  });
+  eq(ok.status, 200, JSON.stringify(ok.body));
+  eq(ok.body.status, 'suspended');
+
+  const again = await PLATFORM('POST', `/tenants/${grayTenantB}/status`, { body: { action: 'suspend', reason: '再来一次' } });
+  eq(again.status, 400, '已经是停用状态，重复停用要拒绝（而不是静默成功）');
+
+  const recover = await PLATFORM('POST', `/tenants/${grayTenantB}/status`, { body: { action: 'recover', operator: 'smoke' } });
+  eq(recover.status, 200);
+  eq(recover.body.status, 'active', '恢复是"能恢复的"，数据不删');
+});
+
+check('停用与恢复都进审计（过渡期无 RBAC，审计是唯一追责依据）', async () => {
+  const r = await PLATFORM('GET', `/tenants/${grayTenantB}/detail`);
+  eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+  const actions = (r.body.audits as Array<{ action: string }>).map((a) => a.action);
+  assert(actions.includes('tenant.suspend'), '停用必须留审计');
+  assert(actions.includes('tenant.recover'), '恢复必须留审计');
+});
+
+group('V6-8 AC-13 抓包：平台侧所有接口响应里查不到房间号字段');
+
+check('逐一打全部平台接口，序列化后搜私有字段', async () => {
+  const paths = [
+    '/tenants',
+    '/schools',
+    '/schools/templates',
+    `/tenants/${t1}/detail`,
+    '/pipeline/board',
+    '/pipeline/rework',
+    `/pipeline/${t1}`,
+    '/deploy/board',
+    '/deploy/versions',
+    '/deploy/batches',
+    '/secrets',
+    '/alerts',
+    '/tickets',
+    '/ledger/overview',
+    `/ledger/${t1}`,
+    `/ledger/${t1}/pending`,
+    `/ledger/${t1}/reconcile`,
+    `/ledger/${t1}/statements`,
+  ];
+
+  for (const p of paths) {
+    const r = await PLATFORM('GET', p);
+    eq(r.status, 200, `${p} 应可访问：${JSON.stringify(r.body).slice(0, 200)}`);
+    const leaks = assertNoTenantPrivateFields(r.body);
+    eq(leaks.length, 0, `${p} 泄漏了租户私有字段：${leaks.join(', ')}`);
+    // 再搜一遍原始文本 —— 抓包看到的就是这个
+    const text = JSON.stringify(r.body).toLowerCase();
+    for (const bad of ['"roomno"', '"room_no"', '"roomcode"', '"floor"', '"room"']) {
+      assert(!text.includes(bad), `${p} 的响应文本里出现了 ${bad}`);
+    }
+  }
+});
+
+check('学校与楼栋模板：已被租户引用时拒绝删除', async () => {
+  const before = await PLATFORM('GET', '/schools');
+  const gxu = (before.body.items as Array<{ id: number; name: string }>).find((s) => s.name === '广西大学');
+  assert(gxu, '应有广西大学');
+
+  const blocked = await PLATFORM('POST', `/schools/templates/${gxu.id}/delete`, { body: {} });
+  eq(blocked.status, 200);
+  eq(blocked.body.deleted, false, '已有租户引用时不能删 —— 删了那些租户的详情页会变空白且没人知道为什么');
+  assert(blocked.body.blockedBy > 0, '要告诉人被几家引用');
+
+  const created = await PLATFORM('POST', '/schools/templates', {
+    body: { name: '冒烟测试学院', region: '广西', city: '柳州', buildingNames: ['东 1 栋', '东 2 栋'] },
+  });
+  eq(created.status, 200, JSON.stringify(created.body));
+
+  const after = await PLATFORM('GET', '/schools/templates');
+  const mine = (after.body.items as Array<{ id: number; buildings: unknown[] }>).find((s) => s.id === created.body.id);
+  eq((mine?.buildings as unknown[]).length, 2, '模板楼栋要能一次写入');
+
+  const del = await PLATFORM('POST', `/schools/templates/${created.body.id}/delete`, { body: {} });
+  eq(del.body.deleted, true, '没人引用时应可删除');
+});
+
+/* ============================================================ S7 边界兜底 */
+
+/** 业务月 / 业务日（中国时区）—— 与 LedgerService.bizDate 同一口径 */
+const bizPeriodOf = (at: Date | string | number = new Date()) =>
+  new Date(new Date(at).getTime() + 8 * 3_600_000).toISOString().slice(0, 7);
+const bizDateOf = (at: Date | string | number = new Date()) =>
+  new Date(new Date(at).getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
+
+group('S7-1 账期账单：2% 汇总 · 差额标记 · 未扣必须标红');
+
+check('已支付未结算 → 差额精确等于该单服务费（2% 汇总不吞不重）', async () => {
+  const before = (await PLATFORM('GET', `/ledger/${t1}/statements?period=${bizPeriodOf()}`)).body.statement;
+
+  const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  const cb = await PAYCB({ orderNo: o.orderNo, txnId: `TXN-BILL-${o.orderNo}`, amountCents: o.totalCents });
+  eq(cb.status, 200, JSON.stringify(cb.body));
+
+  const after = (await PLATFORM('GET', `/ledger/${t1}/statements?period=${bizPeriodOf()}`)).body.statement;
+  // 精确到分：新增一笔已支付未结算的单，差额必须**正好**增加它的服务费。
+  // 用"正好"而不是">0"：多了说明重复计入，少了说明漏了某单 —— 两种都是钱错。
+  eq(
+    after.diffCents - before.diffCents,
+    o.feeCents,
+    '未结算订单应原样体现在差额里（应付 − 实扣）',
+  );
+  // 「未扣必须标红」的可执行形式：状态与差额同源，不允许出现"差额≠0 但状态 ok"
+  eq(after.status, after.diffCents === 0 ? 'ok' : 'diff', '差额与状态必须同源');
+  eq(after.status, 'diff', '存在未结算订单时账单必须是 diff（后台据此标红）');
+});
+
+check('结算按批次精确扣回差额（跨期差异可解释，不是"账错了"）', async () => {
+  const before = (await PLATFORM('GET', `/ledger/${t1}/statements?period=${bizPeriodOf()}`)).body.statement;
+  assert(before.diffCents !== 0, '前置条件：结算前必须是有差额的（否则这条用例什么都没验证）');
+
+  // ⚠️ runDate 必须**晚于今天**：每日扣减是"次日扣前一天"，流水时间钉在该业务日起点前 1 秒。
+  //    用今天当 runDate 只会结算"今天之前已支付"的单，今天的单仍留在差额里 ——
+  //    这正是真实存在的**跨期差异**，也是把对账看板拆成两个差额的原因。
+  //    runDate 还必须**避开前面用例已占用的批次**（幂等键 = runDate + tenantCode，
+  //    撞上了会直接 skipped，然后你会误以为"扣了但账单没动"）。
+  const view = (await PLATFORM('GET', `/ledger/${t1}`)).body;
+  const usedDates = new Set<string>((view.runs ?? []).map((r: { runDate: string }) => r.runDate));
+  let runDate = bizDateOf(Date.now() + 86_400_000);
+  for (let i = 2; i < 12 && usedDates.has(runDate); i++) runDate = bizDateOf(Date.now() + i * 86_400_000);
+  assert(!usedDates.has(runDate), `找不到空闲的结算日（已用：${[...usedDates].join(',')}）`);
+
+  const settle = await PLATFORM('POST', `/ledger/${t1}/settle`, { body: { runDate } });
+  eq(settle.status, 200, JSON.stringify(settle.body));
+  eq(settle.body.skipped, false, '必须是真正跑了一批，而不是命中了既有批次（skipped=true 时会让人误判）');
+  const settledFee = settle.body.run.feeCents;
+  assert(settledFee > 0, `这一批应扣到钱，实际 ${settledFee}`);
+  eq(bizPeriodOf(settle.body.txn.createdAt), bizPeriodOf(), '流水时间必须钉在本账期内，否则账单看不出这次扣减');
+
+  const after = (await PLATFORM('GET', `/ledger/${t1}/statements?period=${bizPeriodOf()}`)).body.statement;
+  eq(after.diffCents, before.diffCents - settledFee, '实扣侧必须按批次金额精确落账');
+  eq(after.status, after.diffCents === 0 ? 'ok' : 'diff', '差额与状态必须同源');
+});
+
+check('批量生成上月账单：每个租户一份，跑两次结果一致（upsert 幂等）', async () => {
+  const period = bizPeriodOf(new Date(Date.now() - 40 * 86_400_000));
+  const first = await PLATFORM('POST', '/ledger/statements/build', { body: { period } });
+  eq(first.status, 200, JSON.stringify(first.body));
+  assert(first.body.items.length >= 1, '至少要生成一份');
+  const mine = first.body.items.find((i: any) => i.tenantCode === t1);
+  assert(mine, '必须覆盖到 t1');
+
+  const second = await PLATFORM('POST', '/ledger/statements/build', { body: { period } });
+  const mine2 = second.body.items.find((i: any) => i.tenantCode === t1);
+  eq(mine2.diffCents, mine.diffCents, '同一个月重复生成必须结果一致');
+});
+
+group('S7-2 对账看板：一屏看完"钱对不对得上"');
+
+check('看板逐租户给出两个差额，且合计口径一致', async () => {
+  const r = await PLATFORM('GET', '/ledger/reconcile-board');
+  eq(r.status, 200, JSON.stringify(r.body));
+
+  const mine = r.body.rows.find((x: any) => x.tenantCode === t1);
+  assert(mine, '看板必须列出 t1');
+  eq(mine.balanceDiffCents, mine.balanceCents - mine.txnSumCents, '差额必须是"余额 − 流水求和"（可复算）');
+  assert(typeof mine.hasDiff === 'boolean', '必须给出"要不要标红"这一个布尔，不让前端自己再算一遍');
+  eq(r.body.totals.tenants, r.body.rows.length, '合计条数必须与明细一致');
+  eq(r.body.totals.withDiff, r.body.rows.filter((x: any) => x.hasDiff).length, '标红条数必须与明细一致');
+  eq(mine.balanceDiffCents, 0, '账本自洽：余额必须等于全部流水求和');
+});
+
+check('对账看板出参过 AC-13：全链路无房间号字段', async () => {
+  const r = await PLATFORM('GET', '/ledger/reconcile-board');
+  const leaks = assertNoTenantPrivateFields(r.body);
+  eq(leaks.length, 0, `泄漏了租户私有字段：${leaks.join(', ')}`);
+  const text = JSON.stringify(r.body).toLowerCase();
+  for (const bad of ['"roomno"', '"room_no"', '"roomcode"', '"floor"']) {
+    assert(!text.includes(bad), `对账看板响应里出现了 ${bad}`);
+  }
+});
+
+group('S7-3 对账巡检：能自愈的自动补，孤儿支付只上报不编单');
+
+check('收到钱但没有订单 → 记一条孤儿支付，且回调重放不重复记', async () => {
+  const beforeOpen = (await PLATFORM('GET', '/ledger/orphan-pays?status=open')).body.open;
+
+  const r = await PAYCB({ orderNo: 'NO-SUCH-ORDER', txnId: 'TXN-ORPHAN-1', amountCents: 1234 });
+  eq(r.status, 404, `订单不存在必须失败（不能给微信 SUCCESS）：${JSON.stringify(r.body)}`);
+  eq(r.body.error.code, 'ORDER_NOT_FOUND');
+
+  const list = (await PLATFORM('GET', '/ledger/orphan-pays?status=open')).body;
+  eq(list.open, beforeOpen + 1, '必须留一条痕 —— 静默丢掉就是"钱没了但没人知道"');
+  const one = list.items.find((x: any) => x.txnId === 'TXN-ORPHAN-1');
+  assert(one, '要能按支付流水号查到它（人工核查的唯一抓手）');
+  eq(one.amountCents, 1234, '金额要原样记下');
+  eq(one.status, 'open');
+
+  // 微信会重放回调：同一笔钱记三遍就变成"三笔要查的账"，先被自己的记录误导
+  await PAYCB({ orderNo: 'NO-SUCH-ORDER', txnId: 'TXN-ORPHAN-1', amountCents: 1234 });
+  const again = (await PLATFORM('GET', '/ledger/orphan-pays?status=open')).body;
+  eq(again.open, list.open, '同一 txnId 重放不得重复记录（幂等键 = 租户 + 流水号）');
+});
+
+check('孤儿支付进告警（danger）—— 它必须出现在有人会看的地方', async () => {
+  const r = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'reconcile_patrol' } });
+  eq(r.status, 200, JSON.stringify(r.body));
+
+  const alerts = (await PLATFORM('GET', '/alerts?open=1')).body;
+  const hit = alerts.items.find((a: any) => a.dedupeKey === `orphan_pay:${t1}:TXN-ORPHAN-1`);
+  assert(hit, '孤儿支付必须生成一条告警');
+  eq(hit.kind, 'pay_anomaly', '复用"支付异常"分类，不新开第六类');
+  eq(hit.level, 'danger', '收到钱没单，这是最高优先级');
+  assert(hit.detail.includes('TXN-ORPHAN-1'), '详情里要带流水号，否则运维无法核');
+
+  // 巡检会反复跑，告警必须幂等
+  await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'reconcile_patrol' } });
+  const again = (await PLATFORM('GET', '/alerts?open=1')).body;
+  eq(
+    again.items.filter((a: any) => a.dedupeKey === `orphan_pay:${t1}:TXN-ORPHAN-1`).length,
+    1,
+    '同一条孤儿支付不能刷出多条告警',
+  );
+});
+
+check('结清孤儿支付必须写处理说明（否则只是把异常抹掉）', async () => {
+  const list = (await PLATFORM('GET', '/ledger/orphan-pays?status=open')).body;
+  const one = list.items.find((x: any) => x.txnId === 'TXN-ORPHAN-1');
+
+  const noNote = await PLATFORM('POST', `/ledger/orphan-pays/${one.id}/resolve`, { body: { operator: 'ops' } });
+  eq(noNote.status, 400, '空白说明必须被拒');
+  eq(noNote.body.error.code, 'VALIDATION_FAILED');
+
+  const ok = await PLATFORM('POST', `/ledger/orphan-pays/${one.id}/resolve`, {
+    body: { operator: 'ops', note: '核对微信账单：该笔为伪造回调，已记录并忽略' },
+  });
+  eq(ok.status, 200, JSON.stringify(ok.body));
+  eq(ok.body.status, 'resolved');
+  eq(ok.body.resolvedBy, 'ops');
+
+  const after = (await PLATFORM('GET', '/ledger/orphan-pays?status=open')).body;
+  eq(after.items.some((x: any) => x.txnId === 'TXN-ORPHAN-1'), false, '结清后不再出现在待处理里');
+});
+
+check('自愈：账本登记漏了 → 巡检自动补上（能自己好的就别生成工单）', async () => {
+  // 造一笔已支付订单，然后**直接删掉平台库的订单投影**，模拟"上次死在半路"
+  const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  const cb = await PAYCB({ orderNo: o.orderNo, txnId: `TXN-HEAL-${o.orderNo}`, amountCents: o.totalCents });
+  eq(cb.status, 200, JSON.stringify(cb.body));
+
+  const factory = appRef!.get(REPO_FACTORY) as MemoryRepoFactory;
+  const existed = factory.store.orderSummaries.delete(o.orderNo);
+  assert(existed, '前置条件：平台库投影应已存在（否则这条用例没验证到东西）');
+
+  // 删掉投影后，钱还在微信那边收了 —— 这正是"支付成功但订单没走完"
+  const run = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'reconcile_patrol' } });
+  eq(run.status, 200, JSON.stringify(run.body));
+  const detail = run.body.results.find((x: any) => x.kind === 'reconcile_patrol')?.detail;
+  const mine = detail.perTenant.find((x: any) => x.tenantCode === t1);
+  assert(mine.repaired >= 1, `该租户应至少自愈 1 单，实际 ${mine.repaired}`);
+
+  // 自愈是可观测的：投影回来了，且待扣队列里能找到这一单
+  const pending = (await PLATFORM('GET', `/ledger/${t1}/pending`)).body;
+  assert(pending.items.some((i: any) => i.orderNo === o.orderNo), '自愈后该单必须重新出现在待扣队列');
+});
+
+group('S7-4 五类任务：看板 · 可注入 now · 手工与调度分开记账');
+
+check('任务清单由服务端给出（前端按钮不写死 kind）', async () => {
+  const r = await PLATFORM('GET', '/ledger/jobs/kinds');
+  eq(r.status, 200);
+  eq(r.body.items.length, 6, '五类任务 + 账单生成');
+  assert(r.body.items.every((i: any) => i.label), '每一项都要有人话标签');
+  const kinds = r.body.items.map((i: any) => i.kind);
+  for (const k of ['daily_settlement', 'close_expired', 'auto_complete', 'expiry_reminder', 'reconcile_patrol']) {
+    assert(kinds.includes(k), `缺少任务 ${k}`);
+  }
+});
+
+check('超时关单：未支付超 15 分钟 → 自动关闭并释放库存', async () => {
+  const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  const later = new Date(Date.now() + (ORDER_TIMEOUT.PAY_TIMEOUT_MINUTES + 1) * 60_000).toISOString();
+  const r = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'close_expired', now: later } });
+  eq(r.status, 200, JSON.stringify(r.body));
+  const detail = r.body.results[0].detail;
+  assert(detail.closed.some((c: any) => c.orderNo === o.orderNo), `该单应被关闭：${JSON.stringify(detail)}`);
+
+  const after = (await ORD('GET', `/${o.orderNo}`)).body;
+  // 学生端订单详情直接返回视图（不再套一层 order），这里两种形状都兼容
+  const afterStatus = after.order?.status ?? after.status;
+  eq(afterStatus, 'cancelled', `关单后状态必须是已取消 [${JSON.stringify(after).slice(0, 200)}]`);
+  const cell = await cellOf(pA, bOrder);
+  eq(cell.locked, 0, '超时关单必须释放预占（否则库存被永久占住）');
+});
+
+check('送达兜底：配送中超 12 小时 → 自动完成，且标记来源是系统', async () => {
+  const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  await PAYCB({ orderNo: o.orderNo, txnId: `TXN-AC-${o.orderNo}`, amountCents: o.totalCents });
+  const acc = await MER('POST', `/${o.orderNo}/accept`);
+  eq(acc.status, 200, JSON.stringify(acc.body));
+  eq(acc.body.order.status, 'delivering');
+
+  const later = new Date(Date.now() + 13 * 3600_000).toISOString();
+  const r = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'auto_complete', now: later } });
+  const detail = r.body.results[0].detail;
+  assert(detail.completed.some((c: any) => c.orderNo === o.orderNo), `该单应被兜底完成：${JSON.stringify(detail)}`);
+
+  const after = (await MER('GET', `/${o.orderNo}`)).body;
+  eq(after.order.status, 'delivered', '兜底后应进入已送达');
+  eq(after.order.autoCompleted, true, '必须区分"系统兜底"与"商户手动标记"，否则事后无法追责');
+
+  // 幂等：再跑一次不该重复处理
+  const again = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'auto_complete', now: later } });
+  eq(again.body.results[0].detail.completed.length, 0, '已完成的单不得再次被兜底');
+});
+
+check('看板把"调度触发"与"手工触发"分开记账 —— 手工跑绿 ≠ 定时任务正常', async () => {
+  await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'statement_build', trigger: 'schedule' } });
+  const status = (await PLATFORM('GET', '/ledger/jobs/status')).body;
+
+  assert(status.scheduleState.ticking === status.enabled, '调度器要如实报告自己在不在跑（关掉时必须说 false）');
+  assert(typeof status.enabled === 'boolean', '必须给出 enabled 供运维确认调度是否被关掉');
+  assert(status.runs.length > 0, '运行记录必须可见');
+  assert(status.history.length > 0, '旧字段 history 仍需保留（既有脚本/手册在用）');
+  assert(status.scheduleState.lastSettlementDate, '必须能回答"上次扣减是哪天"');
+
+  const sched = status.runs.find((r: any) => r.trigger === 'schedule');
+  assert(sched, '必须能区分出调度触发的那条 —— 否则手工点一次全绿会骗过运维');
+  assert(status.runs[0].finishedAt, '跑完的任务必须有结束时间（没结束时间 = 可能卡死了）');
+});
+
+check('未知任务名 → 明确报错并列出可用项，不静默当成功', async () => {
+  const r = await PLATFORM('POST', '/ledger/jobs/run', { body: { kind: 'no_such_job' } });
+  eq(r.status, 200);
+  assert(r.body.error, '必须给出错误');
+  assert(Array.isArray(r.body.known) && r.body.known.length === 6, '要列出可用任务名，否则调用方只能猜');
+});
+
+group('S7-5 空态与状态全集的**数据前提**：客服电话 · 今日日报 · 业务日口径');
+
+check('租户解析必须下发客服电话 —— 否则"联系店家"是一句空话', async () => {
+  const r = await req('POST', '/api/tenant/resolve', { body: { appid: 'wxTEST0000000001' } });
+  eq(r.status, 200, JSON.stringify(r.body));
+  assert('contactPhone' in r.body, '响应里必须有这个字段（哪怕是 null），前端才知道能不能给拨号入口');
+  eq(r.body.contactPhone, '13800000000', '店主填了客服电话就必须原样下发');
+
+  // AC-13 的边界要在这里钉死：解析响应是学生可见的最大的一份数据，
+  // 一旦有人往里塞"方便调试"的字段，泄露会从这里开始
+  const raw = JSON.stringify(r.body);
+  assert(!/room/i.test(raw), '学生可见响应里不得出现任何房间号字段');
+  assert(!/openid/i.test(raw), '不得下发顾客身份标识');
+});
+
+check('客服电话为空时返回 null，而不是空串 —— 前端据此走"复制店名"那条路', async () => {
+  const clear = await req('POST', `/t/${t1}/api/config`, { token: t1OwnerToken, body: { contactPhone: null } });
+  eq(clear.status, 201, JSON.stringify(clear.body));
+  const after = (await req('POST', '/api/tenant/resolve', { body: { appid: 'wxTEST0000000001' } })).body;
+  eq(after.contactPhone, null, '必须显式 null：空串会让前端把判断写成 ===\'\' 而不是 falsy');
+
+  // 还原，避免影响后续用例（也顺手验证了能改回来）
+  await req('POST', `/t/${t1}/api/config`, { token: t1OwnerToken, body: { contactPhone: '13800000000' } });
+  const restored = (await req('POST', '/api/tenant/resolve', { body: { appid: 'wxTEST0000000001' } })).body;
+  eq(restored.contactPhone, '13800000000', '改回来必须立刻生效（配置无需发版，§2.2）');
+});
+
+check('配送清单带今日日报：空态要说"今天送了 N 单、营收 ¥X"而不是一句"没有订单"', async () => {
+  const d = (await req('GET', `/t/${t1}/api/merchant/orders/delivery`, { token: t1OwnerToken })).body;
+  assert(d.today, '必须与 groups 同源返回 —— 分成两个请求会出现"待送 0 单、营收却是昨天的"');
+  assert(
+    typeof d.today.deliveredCount === 'number' && typeof d.today.deliveredCents === 'number',
+    '单数与金额都必须是数字（营收用分，避免浮点）',
+  );
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(d.today.day), `业务日格式必须是 YYYY-MM-DD，实际 ${d.today.day}`);
+  eq(d.today.day, bizDateOf(), '日报归属的业务日必须是服务端当天，不能由前端算');
+});
+
+check('今日营收只算已送达，取消与退款不计 —— 退了的不算营收', async () => {
+  // 造两单：一单正常送达，一单取消
+  const good = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  await PAYCB({ orderNo: good.orderNo, txnId: `TXN-TODAY-${good.orderNo}`, amountCents: good.totalCents });
+  const accept = await req('POST', `/t/${t1}/api/merchant/orders/${good.orderNo}/accept`, { token: t1OwnerToken, body: {} });
+  eq(accept.status, 200, JSON.stringify(accept.body));
+  const deliver = await req('POST', `/t/${t1}/api/merchant/orders/${good.orderNo}/deliver`, { token: t1OwnerToken, body: {} });
+  eq(deliver.status, 200, JSON.stringify(deliver.body));
+
+  const bad = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  await ORD('POST', `/${bad.orderNo}/cancel`, { reason: '不想要了' });
+
+  const d = (await req('GET', `/t/${t1}/api/merchant/orders/delivery`, { token: t1OwnerToken })).body;
+  assert(d.today.deliveredCount >= 1, '刚送达的那单必须出现在今日日报里');
+  assert(
+    d.today.deliveredCents >= good.totalCents,
+    `今日营收必须含这一单的实付 ${good.totalCents}，实际 ${d.today.deliveredCents}`,
+  );
+  // 取消单的金额不得混进来：营收口径一旦宽松，"营收"就没人信了
+  eq(d.today.deliveredCents % 1, 0, '营收必须是整数分');
+});
+
+check('业务日按中国时区切 —— 跨 UTC 日边界的单归属正确', () => {
+  // 北京时间 2026-09-22 07:00 = UTC 2026-09-21 23:00。
+  // 用 UTC 切日会把这一天算成 09-21，配送日报和账期就会各说各话。
+  const beijingMorning = new Date(Date.UTC(2026, 8, 21, 23, 0, 0));
+  eq(bizDayOf(beijingMorning), '2026-09-22', 'UTC 深夜是北京的次日早晨');
+  eq(bizMonthOf(beijingMorning), '2026-09');
+  // 日界起点必须正好落在北京 00:00（= UTC 前一日 16:00）
+  eq(bizDayStartOf(beijingMorning).toISOString(), '2026-09-21T16:00:00.000Z', '业务日起点 = 北京 00:00');
+  // 月末最后一刻不能跨月（否则账期会多一天）
+  const monthEnd = new Date(Date.UTC(2026, 8, 30, 15, 59, 0)); // 北京 09-30 23:59
+  eq(bizDayOf(monthEnd), '2026-09-30');
+  eq(bizDayOf(new Date(Date.UTC(2026, 8, 30, 16, 0, 0))), '2026-10-01', '北京 10-01 00:00 必须进新账期');
+});
+
+group('S7-6 §5.4 文案对照表落地 + §6.5 学生端脱敏');
+
+check('订阅到期 / 余额触底 → 学生端两种状态**必须无法区分**（AC-13）', () => {
+  const base = {
+    shopOpen: true,
+    buildingStatus: 'active' as const,
+    buildingDeliveryEnabled: true,
+    subscriptionValid: true,
+    balanceCents: 10000,
+    creditLimitCents: -2000,
+    openTime: '08:00',
+    closeTime: '22:30',
+    accessibleFrom: '06:30',
+    accessibleTo: '22:30',
+    cutoffTime: '22:00',
+  };
+  const at = new Date(Date.UTC(2026, 8, 22, 4, 0));
+  const expired = evaluateOrderGate({ ...base, subscriptionValid: false }, at);
+  const blocked = evaluateOrderGate({ ...base, balanceCents: -2000 }, at);
+
+  // 内部状态必须可区分 —— 商户端看板与运维排障靠它
+  eq(expired.state, 'subscription_expired', '内部状态不能为了脱敏而合并');
+  eq(blocked.state, 'balance_blocked');
+
+  // 但**对外**必须一模一样。只要学生能区分，"这家店快开不下去了"就会顺着界面传出去，
+  // 而他唯一的动作是"换一家" —— 对商户是净损失（§6.5）。
+  eq(expired.message, blocked.message, '两种经营状况在学生端的文案必须逐字相同');
+  for (const w of ['服务期', '余额', '充值', '续费', '接单', '订单', '停单']) {
+    assert(!expired.message.includes(w), `学生端文案不得出现商户经营词「${w}」：${expired.message}`);
+  }
+  eq(expired.tone, 'off', '与「店家休息中」同色 —— 学生只需知道"现在下不了单"');
+});
+
+check('商户端账本文案三档都给「事实 + 下一步」，触底必须给恢复条件（§5.4-7）', async () => {
+  const wallet0 = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet;
+  const warnLine = wallet0.warnLineCents as number;
+  const limit = wallet0.creditLimitCents as number;
+  const bump = async (target: number) => {
+    const cur = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet.balanceCents as number;
+    const delta = target - cur;
+    if (delta === 0) return;
+    await PLATFORM('POST', `/ledger/${t1}/adjust`, {
+      body: { amountCents: delta, reason: '验收：把余额推到指定档位', operator: 'smoke' },
+    });
+  };
+
+  // ① ok —— 正常也要有话。余额卡是常驻卡片，正文留白会让商户以为"没加载全"
+  await bump(warnLine + 50_000);
+  let w = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet;
+  eq(w.tone, 'ok');
+  assert(w.noticeTitle && w.noticeBody, 'ok 态也必须给标题与正文');
+  assert(!w.noticeBody.includes('偏低'), `余额充足时不得说"偏低"（数字与结论会自相矛盾）：${w.noticeBody}`);
+
+  // ② warn —— 说事实 + 给建议，不催不吓
+  await bump(warnLine - 100);
+  w = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet;
+  eq(w.tone, 'warn');
+  assert(w.noticeBody.includes('低于预警线'), `预警档必须点明预警线：${w.noticeBody}`);
+
+  // ③ danger —— 已经停了，所以必须给**恢复条件**，不能只说"请充值"（§5.4-7）
+  await bump(limit);
+  w = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet;
+  eq(w.tone, 'danger');
+  assert(
+    w.noticeBody.includes('充值后立即恢复接单'),
+    `触底文案必须给出恢复条件（充值后立即恢复接单），实际：${w.noticeBody}`,
+  );
+  assert(
+    w.noticeBody.includes('已下单的订单不受影响'),
+    '必须交代已接订单的去向 —— 否则商户会以为手里的单也黄了',
+  );
+  const hits = BANNED_COPY.filter((x) => w.noticeTitle.includes(x) || w.noticeBody.includes(x));
+  eq(hits.length, 0, `账本文案不得出现禁用词（${BANNED_COPY.join('/')}）：${hits.join('/')}`);
+
+  // 还原到预警线以上，避免后面手工跑任务时看的是一张停单的店
+  await bump(warnLine + 50_000);
+});
+
+check('服务期到期文案：中性词 + 给恢复条件（§5.4-8）', async () => {
+  const before = (await PLATFORM('GET', `/ledger/${t1}`)).body.wallet.balanceCents as number;
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+  await PLATFORM('POST', `/ledger/${t1}/subscription/renew`, { body: { periodEnd: past } });
+
+  const billing = (await PLATFORM('GET', `/ledger/${t1}`)).body;
+  eq(billing.subscription.noticeTitle, '本学期服务期已结束', '标题用中性词「服务期」，并点明是本学期');
+  assert(
+    billing.subscription.notice.includes('续费后即可继续接单'),
+    `到期文案必须给出恢复条件，实际：${billing.subscription.notice}`,
+  );
+  assert(
+    billing.subscription.notice.includes('仍可浏览'),
+    '必须说清"还能做什么"（仍可浏览）—— 只说不行的商户会以为店被关了',
+  );
+  // 禁用词一个都不许有（"欠费"会把商户的感受从"我该交服务费"变成"我被追债了"）
+  const hits = BANNED_COPY.filter(
+    (x) => billing.subscription.notice.includes(x) || billing.subscription.noticeTitle.includes(x),
+  );
+  eq(hits.length, 0, `到期文案不得出现禁用词：${hits.join('/')}`);
+  eq(billing.wallet.balanceCents, before, '到期只停单，不动余额一分钱');
+
+  // 续回来
+  const future = new Date(Date.now() + 60 * 86_400_000).toISOString();
+  await PLATFORM('POST', `/ledger/${t1}/subscription/renew`, { body: { periodEnd: future } });
+  const back = (await PLATFORM('GET', `/ledger/${t1}`)).body.subscription;
+  eq(back.status, 'active');
+  assert(back.noticeTitle.includes('还有'), `未到期时标题应给剩余天数，实际：${back.noticeTitle}`);
+});
+
+check('三种「今天做不了」共用同一张模板 —— 结构一致，差别只在标题与恢复时间（AC-02）', () => {
+  const base = {
+    shopOpen: true,
+    buildingStatus: 'active' as const,
+    buildingDeliveryEnabled: true,
+    subscriptionValid: true,
+    balanceCents: 10000,
+    creditLimitCents: -2000,
+    openTime: '08:00',
+    closeTime: '22:30',
+    accessibleFrom: '06:30',
+    accessibleTo: '22:30',
+    cutoffTime: '22:00',
+  };
+  const at = (h: number, m: number) => new Date(Date.UTC(2026, 8, 22, h - 8, m));
+
+  const closed = evaluateOrderGate(base, at(22, 15)); // 已截单
+  const paused = evaluateOrderGate({ ...base, buildingDeliveryEnabled: false }, at(12, 0)); // 本栋今日停送
+  const resting = evaluateOrderGate({ ...base, shopOpen: false }, at(12, 0)); // 店家休息中
+
+  for (const g of [closed, paused, resting]) {
+    eq(g.orderable, false, `${g.state} 不该可下单`);
+    eq(g.tone, 'off', `AC-02：三种"今天做不了"必须是同一种灰，${g.state} 用了 ${g.tone}`);
+    assert(g.title && !g.title.endsWith('。'), `标题必须是短句（不带句号）：${g.title}`);
+    assert(g.recovery, `${g.state} 是"今天不做"而不是"永远不做"，必须给出恢复时间`);
+  }
+
+  // 共用模板 ≠ 三种情况说同一句话：标题必须能区分，否则学生不知道自己在等什么
+  eq(
+    new Set([closed.title, paused.title, resting.title]).size,
+    3,
+    `三种情况的标题必须互不相同，实际：${closed.title} / ${paused.title} / ${resting.title}`,
+  );
+  assert(closed.recovery!.includes('明天'), `截单之后要等到明天：${closed.recovery}`);
+  eq(closed.title, '今天送到这儿了', '§6.4：已截单的标题是「今天送到这儿了」（它并非出错）');
+
+  // 停用 ≠ 停送（§6.2）：停用是"这家店不在这栋楼做生意了"，承诺"明天恢复"就是撒谎
+  const off = evaluateOrderGate({ ...base, buildingStatus: 'disabled' }, at(12, 0));
+  eq(off.state, 'building_paused');
+  eq(off.tone, 'off');
+  eq(off.recovery, null, '停用楼栋不得给恢复时间 —— 说了就是撒谎，学生会白等一天');
+  assert(off.title !== paused.title, '停用与今日停送必须能区分（一个是永久、一个是今天）');
+
+  // 可下单时也要有标题与恢复说明 —— 否则状态条只能在 ok 时留白
+  const ok = evaluateOrderGate(base, at(12, 0));
+  eq(ok.title, '现在可以下单');
+  assert(ok.recovery && ok.recovery.includes('截单'), `ok 态要说清什么时候截单：${ok.recovery}`);
+  const soon = evaluateOrderGate(base, at(21, 45));
+  eq(soon.title, '即将截单');
+  eq(soon.tone, 'warn', '唯一用琥珀的是「即将截单」—— 它还没发生、人还能做点什么');
+});
+
+check('下单失败要说清「哪个商品 + 哪一栋 + 下一步」（§5.4-3）', async () => {
+  const r = await ORD('POST', '', {
+    buildingId: bOrder,
+    addressId: addrA,
+    items: [{ productId: pB, qty: 1 }],
+  });
+  eq(r.status, 400, JSON.stringify(r.body));
+  eq(r.body.error.code, 'ORDER_OUT_OF_STOCK');
+  const msg = r.body.error.message as string;
+  assert(msg.includes('测试售罄品'), `必须点名商品：${msg}`);
+  assert(msg.includes('已售罄'), `必须说清是"售罄"而不是笼统的"库存不足"：${msg}`);
+  assert(msg.includes('请移出后重新提交'), `必须给下一步：${msg}`);
+  // 楼栋名必须出现 —— 同一个人可能在两栋楼都有收货地址，不说清他会去改错的那栋
+  const list = (await req('GET', `/t/${t1}/api/buildings`, { token: t1Token })).body.buildings as Array<
+    { id: number; name: string }
+  >;
+  const bName = list.find((x) => x.id === bOrder)?.name ?? '';
+  assert(bName, '前置条件不满足：找不到订单楼栋的名字');
+  assert(msg.includes(bName), `必须点明是哪一栋（${bName}）：${msg}`);
+});
+
+/* ============================================================================
+ * S8-A 闭环回归补充
+ * ----------------------------------------------------------------------------
+ * 42 条闭环（CS-01~13 / CM-01~08 / CW-01~10 / CP-01~11）绝大部分已被前面各分组
+ * 覆盖，对应关系见 docs/闭环回归用例_42条.md。
+ *
+ * 这里只补两条**服务端可观测、但此前没被钉死**的：
+ *   · CM-02 开关店 —— 不只是"关店后下不了单"，还有"在途订单不受影响"
+ *   · CS-12 地址簿 —— 默认唯一 / 删除 / 非法输入 / "送他人房间"
+ * 之所以补这两条而不是全量重写：重复断言不增加信心，只增加维护成本。
+ * ==========================================================================*/
+
+group('S8-A 闭环回归补充：开关店（CM-02）与地址簿（CS-12）');
+
+check('CM-02 开关店：关店后新单被拦，但**在途订单照常履约**', async () => {
+  // 前置：造一张已支付、已接单的在途订单（停在"配送中"）
+  const o = await placeOk({ buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }] });
+  const cb = await PAYCB({ orderNo: o.orderNo, txnId: `TX-S8A-A-${o.orderNo}`, amountCents: o.totalCents });
+  eq(cb.status, 200, JSON.stringify(cb.body));
+  const acc = await MER('POST', `/${o.orderNo}/accept`);
+  assert(acc.status < 400, JSON.stringify(acc.body));
+  eq(acc.body.order.status, 'delivering', '前置：这一单应当已在配送中');
+
+  // 关店
+  const close = await req('POST', `/t/${t1}/api/config`, { token: t1OwnerToken, body: { shopOpen: false } });
+  assert(close.status < 400, JSON.stringify(close.body));
+
+  // 新单：必须被闸门拦下，且给出"关门"这个明确原因 ——
+  // 不能笼统报库存不足或系统错误，否则商户会去查库存
+  const blocked = await ORD('POST', '', {
+    buildingId: bOrder, addressId: addrA, items: [{ productId: pA, qty: 1 }],
+  });
+  eq(blocked.status, 400, JSON.stringify(blocked.body));
+  eq(
+    blocked.body.error.code, 'ORDER_GATE_CLOSED',
+    `关店后下单应报「闸门关闭」，实际 ${blocked.body.error.code}`,
+  );
+
+  // 在途订单：关店**不能**影响它。
+  // 否则"盘中订单不受影响"就只是界面上一句没人验证过的话 ——
+  // 而真实的伤害是：商户收工关店，楼里那几单再也点不了送达。
+  const done = await MER('POST', `/${o.orderNo}/deliver`);
+  assert(done.status < 400, `关店不得妨碍在途订单送达：${JSON.stringify(done.body)}`);
+  eq(done.body.order.status, 'delivered');
+
+  // 恢复营业 —— 不恢复的话后面所有用例都会连坐假失败，而假失败的根因最难查
+  const reopen = await req('POST', `/t/${t1}/api/config`, { token: t1OwnerToken, body: { shopOpen: true } });
+  assert(reopen.status < 400, JSON.stringify(reopen.body));
+  const gate = await req('GET', `/t/${t1}/api/config/gate?buildingId=${bOrder}`, { token: stuTokenRef.a });
+  assert(gate.body.orderable, '恢复营业后必须又能下单，否则后续用例会连坐假失败');
+});
+
+check('CS-12 地址簿：默认唯一 · 送他人房间 · 非法输入给明确原因', async () => {
+  const mk = (room: string, extra: Record<string, unknown> = {}) =>
+    ADDR('POST', '', { buildingId: bOrder, room, ...extra });
+
+  // "帮室友带一份"是真实高频场景 —— 收件人允许与本人不同，不做限制
+  const r1 = await mk('701', { contact: '室友小王', phone: '13900000002', tag: '帮同学带' });
+  eq(r1.status, 201, JSON.stringify(r1.body));
+  const rid = r1.body.address.id as number;
+  eq(r1.body.address.isDefault, false, '已有默认地址时，新地址不该抢默认');
+
+  // 置为默认 → 旧默认必须让位。默认唯一不是洁癖：
+  // 结算页不选地址时"送到哪"必须只有一个答案
+  const p1 = await ADDR('PATCH', `/${rid}`, { isDefault: true });
+  eq(p1.status, 200, JSON.stringify(p1.body));
+  eq(p1.body.address.isDefault, true);
+
+  const list = await ADDR('GET', '');
+  const items = list.body.items as Array<{ id: number; isDefault: boolean }>;
+  const defaults = items.filter((a) => a.isDefault);
+  eq(defaults.length, 1, `默认地址必须唯一，实际有 ${defaults.length} 条`);
+  eq(defaults[0]!.id, rid, '默认应当是刚置的那一条');
+  eq(items[0]!.id, rid, '默认地址必须排在最前 —— 前端据此直接取第一条');
+
+  // 非法输入：必须给明确原因，绝不能静默成功（静默成功 = 学生以为存上了）
+  const noRoom = await mk('   ');
+  eq(noRoom.status, 400, JSON.stringify(noRoom.body));
+  eq(noRoom.body.error.code, 'VALIDATION_FAILED');
+
+  const noBuilding = await ADDR('POST', '', { buildingId: 999999, room: '101' });
+  eq(noBuilding.status, 404, JSON.stringify(noBuilding.body));
+  eq(noBuilding.body.error.code, 'BUILDING_NOT_FOUND');
+
+  // 删除：删掉就不再出现；删不存在的要给 404（假成功会让界面与真实状态分叉）
+  const del = await ADDR('DELETE', `/${rid}`);
+  eq(del.status, 200, JSON.stringify(del.body));
+  const after = await ADDR('GET', '');
+  assert(
+    !(after.body.items as Array<{ id: number }>).some((a) => a.id === rid),
+    '删除后不应再出现在地址簿里',
+  );
+  const delAgain = await ADDR('DELETE', `/${rid}`);
+  eq(delAgain.status, 404, JSON.stringify(delAgain.body));
+  eq(delAgain.body.error.code, 'ADDRESS_NOT_FOUND');
+});
+
 /* ------------------------------------------------------- 运行 */
+
+let appRef: INestApplication | null = null;
 
 async function main(): Promise<void> {
   const app: INestApplication = await NestFactory.create(AppModule, { logger: false });
+  appRef = app;
   const logger = app.get(AppLogger);
   app.useLogger(logger);
   app.useGlobalFilters(new AllExceptionsFilter(logger));

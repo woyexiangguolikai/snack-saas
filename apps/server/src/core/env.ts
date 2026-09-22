@@ -59,6 +59,17 @@ export const env = {
    */
   platformAdminKey: required('PLATFORM_ADMIN_KEY', 'dev-platform-key'),
 
+  /**
+   * 租户密钥（代码上传密钥 / 支付证书）的加密主密钥。
+   *
+   * 与 JWT_SECRET **必须是两个不同的值**：JWT 泄漏只影响"冒充某个会话"，
+   * 主密钥泄漏等于把**所有商户的上传密钥**交出去。合成一个值的话，
+   * 任何一次"为了方便"把 JWT_SECRET 贴进某个配置文件，都会连带泄漏后者。
+   *
+   * 丢了等于所有商户密钥要重新收集一遍 —— 所以它必须单独备份。
+   */
+  secretsMasterKey: required('SECRETS_MASTER_KEY', 'dev-master-key-change-me'),
+
   logLevel: process.env.LOG_LEVEL ?? 'info',
 
   /**
@@ -92,7 +103,7 @@ export const env = {
    * 混在一起会让人误以为"要么全配好、要么都没配"。
    *
    * 未配置时的行为是明确的：发起支付返回 `PAY_NOT_CONFIGURED`，
-   * 订单**留在待支付**并保留 30 分钟预占 —— 不清单、不假装成功。
+   * 订单**留在待支付**并保留 15 分钟预占 —— 不清单、不假装成功。
    */
   wechatPay: {
     mchId: process.env.WECHATPAY_MCHID ?? '',

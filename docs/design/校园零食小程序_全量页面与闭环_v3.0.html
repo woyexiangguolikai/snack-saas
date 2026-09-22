@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>校园零食多租户小程序 · 全量页面与闭环 v3.0</title>
+<style>
+
+/* ============================================================
+   01 · Design Token —— 这一段可直接复制进 app.wxss
+   设计基准 375pt；小程序 1px = 2rpx
+   ============================================================ */
+:root{
+  /* 品牌色阶 —— 唯一可被租户主题色整体替换的一组变量 */
+  --brand-50:#FFF6F0;--brand-100:#FFE8D9;--brand-200:#FFCFB0;--brand-300:#FFAE7E;
+  --brand-400:#FF8B4D;--brand-500:#F26B21;--brand-600:#D8551A;--brand-700:#B8440F;--brand-800:#8F3208;
+  /* 中性暖灰 —— 不使用纯黑纯白 */
+  --ink-900:#1C1917;--ink-700:#44403C;--ink-500:#78716C;--ink-400:#A8A29E;--ink-300:#D6D3CD;
+  --line-200:#E7E5E0;--line-100:#F2F0EB;--paper:#FBF9F5;--surface:#FFFFFF;
+  /* 语义色 —— 状态色永不参与换肤 */
+  --ok:#15803D;--ok-bg:#EAF6EE;
+  --warn:#B45309;--warn-bg:#FDF3E3;
+  --danger:#C42B1C;--danger-bg:#FCEDEA;
+  --info:#1D5FA8;--info-bg:#EAF1FA;
+  --off:#6B6560;--off-bg:#F2F0EB;
+  /* 圆角 / 字体 / 阴影 */
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-full:999px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --s1:0 1px 2px rgba(28,25,23,.05),0 2px 8px rgba(28,25,23,.04);
+  --s2:0 6px 24px rgba(28,25,23,.10);
+  --sup:0 -4px 18px rgba(28,25,23,.07);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:60px}
+body{margin:0;background:var(--paper);color:var(--ink-900);font-family:var(--font);font-size:14.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+
+/* ---------- 文档外壳 ---------- */
+.topbar{position:sticky;top:0;z-index:80;background:rgba(251,249,245,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:14px;padding:0 20px;height:52px}
+.tb-logo{width:24px;height:24px;border-radius:7px;background:var(--brand-500);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tb-t{font-size:13.5px;font-weight:600;white-space:nowrap}
+.tb-v{font-family:var(--mono);font-size:11px;color:var(--brand-500);border:1px solid var(--brand-200);background:var(--brand-50);padding:1px 7px;border-radius:var(--r-full)}
+.tb-nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto}
+.tb-nav a{font-size:12.5px;color:var(--ink-500);text-decoration:none;padding:6px 11px;border-radius:var(--r-sm);white-space:nowrap}
+.tb-nav a:hover{background:var(--line-100);color:var(--ink-900)}
+.tb-nav a.on{background:var(--ink-900);color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px}
+section{padding:44px 0 8px;border-top:1px solid var(--line-200);margin-top:34px}
+section:first-of-type{border-top:0}
+h1{font-size:29px;line-height:1.3;letter-spacing:-.015em;margin:20px 0 10px;font-weight:600}
+h2{font-size:21px;letter-spacing:-.01em;margin:0 0 8px;font-weight:600;display:flex;align-items:center;gap:9px}
+h2 .num{font-family:var(--mono);font-size:12.5px;color:var(--brand-500);font-weight:400}
+h3{font-size:15.5px;margin:26px 0 10px;font-weight:600}
+h4{font-size:13.5px;margin:0;font-weight:600}
+p{margin:9px 0}
+.lede{font-size:14px;color:var(--ink-500);max-width:82ch}
+.sub{font-size:13px;color:var(--ink-500);margin:0 0 4px;max-width:88ch}
+.note{font-size:12.5px;color:var(--ink-500);background:var(--line-100);border-radius:var(--r-md);padding:11px 14px;margin:14px 0;line-height:1.75}
+.note b{color:var(--ink-900);font-weight:600}
+.note.warn{background:var(--warn-bg);color:#7A3E05}
+.note.warn b{color:#5C2E04}
+.note.dan{background:var(--danger-bg);color:#8F2015}
+.note.dan b{color:#6E180F}
+code{font-family:var(--mono);font-size:12px;background:var(--line-100);padding:1px 5px;border-radius:4px;color:var(--brand-700)}
+pre{font-size:11.5px;line-height:1.85;background:#1C1917;color:#E7E5E0;border-radius:var(--r-md);padding:16px 18px;overflow-x:auto;margin:12px 0;white-space:pre;tab-size:2}
+pre .c{color:#8A857E}
+pre .k{color:#FFAE7E}
+pre .v{color:#A8E6B8}
+
+/* ---------- 组件盒 ---------- */
+.cbox{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-lg);margin:16px 0;overflow:hidden}
+.chd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-200);background:var(--paper)}
+.cid{font-family:var(--mono);font-size:11px;color:var(--brand-700);background:var(--brand-50);border:1px solid var(--brand-200);border-radius:5px;padding:1px 6px;flex:none}
+.ctag{font-size:10.5px;color:var(--ink-400);border:1px solid var(--line-200);border-radius:var(--r-full);padding:1px 8px;flex:none}
+.ctag.sig{border-color:var(--brand-300);color:var(--brand-700);background:var(--brand-50)}
+.ctag.key{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
+.chd .r{margin-left:auto;font-size:11px;color:var(--ink-400);font-family:var(--mono)}
+.cdesc{font-size:12.5px;color:var(--ink-500);padding:11px 16px 0;margin:0;line-height:1.75}
+.cstage{padding:16px;background:
+  linear-gradient(0deg,var(--line-100) 1px,transparent 1px) 0 0/100% 28px,
+  linear-gradient(90deg,var(--line-100) 1px,transparent 1px) 0 0/28px 100%,var(--paper);
+  display:flex;flex-wrap:wrap;gap:14px;align-items:center;border-top:1px solid var(--line-200);margin-top:12px}
+.cstage.col{flex-direction:column;align-items:stretch;gap:10px}
+.cstage.wide{gap:20px}
+.stg{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.stg .lab{font-size:10px;font-family:var(--mono);color:var(--ink-400);letter-spacing:.02em}
+.crow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+table.cs{width:100%;border-collapse:collapse;font-size:12px}
+table.cs th{text-align:left;background:var(--line-100);color:var(--ink-500);font-weight:500;padding:7px 12px;border-top:1px solid var(--line-200);white-space:nowrap;font-size:11px}
+table.cs td{padding:7px 12px;border-top:1px solid var(--line-200);vertical-align:top;line-height:1.65}
+table.cs td.m{font-family:var(--mono);font-size:11.5px}
+table.cs td b{font-weight:600}
+.tagp{display:inline-block;font-size:10.5px;font-family:var(--mono);background:var(--line-100);border-radius:4px;padding:1px 6px;color:var(--ink-700)}
+.tagp.pv{background:var(--danger-bg);color:var(--danger)}
+.tagp.pk{background:var(--ok-bg);color:var(--ok)}
+.tagp.pw{background:var(--warn-bg);color:var(--warn)}
+
+/* ============================================================
+   02 · 原子组件（.ui-* 前缀，均为 1:1 真值）
+   ============================================================ */
+
+/* --- 按钮 --- */
+.b{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--font);font-size:15px;font-weight:600;letter-spacing:.01em;border-radius:var(--r-md);padding:0 20px;height:46px;border:1px solid transparent;cursor:pointer;transition:background .15s ease,transform .08s ease,opacity .15s ease;user-select:none}
+.b:active{transform:scale(.985)}
+.b-pri{background:var(--brand-500);color:#fff}
+.b-pri:hover{background:var(--brand-600)}
+.b-sec{background:var(--surface);color:var(--ink-900);border-color:var(--line-200)}
+.b-sec:hover{background:var(--line-100)}
+.b-tex{background:transparent;color:var(--brand-700);padding:0 8px;font-weight:500}
+.b-tex:hover{background:var(--brand-50)}
+.b-dan{background:var(--surface);color:var(--danger);border-color:#E9C9C4}
+.b-dan:hover{background:var(--danger-bg)}
+.b-danf{background:var(--danger);color:#fff}
+.b-sm{height:34px;font-size:13px;padding:0 13px;border-radius:8px;gap:5px}
+.b-lg{height:52px;font-size:16px;border-radius:var(--r-lg)}
+.b-blk{width:100%}
+.b[disabled],.b.dis{opacity:.42;cursor:not-allowed;pointer-events:none}
+.b-txt{width:13px;height:13px;flex:none}
+.spin{width:13px;height:13px;border:1.6px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;flex:none}
+.spin.dk{border-color:var(--line-200);border-top-color:var(--ink-500)}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* --- 输入 --- */
+.inp{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-md);padding:0 12px;height:46px;transition:border-color .15s,box-shadow .15s}
+.inp.foc{border-color:var(--brand-500);box-shadow:0 0 0 3px rgba(242,107,33,.13)}
+.inp.err{border-color:var(--danger);box-shadow:0 0 0 3px rgba(196,43,28,.10)}
+.inp.dis{background:var(--line-100);color:var(--ink-400)}
+.inp input{border:0;outline:0;background:transparent;font-family:var(--font);font-size:14.5px;color:var(--ink-900);width:100%;min-width:0}
+.inp input::placeholder{color:var(--ink-400)}
+.inp .pre,.inp .suf{font-size:13px;color:var(--ink-400);flex:none}
+.inp .clr{width:16px;height:16px;border-radius:50%;background:var(--ink-300);color:#fff;font-size:11px;line-height:16px;text-align:center;flex:none}
+.helper{font-size:11.5px;color:var(--ink-400);margin-top:5px;line-height:1.6}
+.helper.err{color:var(--danger)}
+.helper.ok{color:var(--ok)}
+.fld{display:block}
+.fld .lb{font-size:12.5px;font-weight:500;color:var(--ink-700);margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.fld .lb i{color:var(--danger);font-style:normal}
+.fld .lb em{font-style:normal;color:var(--ink-400);font-weight:400;font-size:11px;margin-left:auto}
+
+/* --- 数字步进 / 数量 --- */
+.step{display:inline-flex;align-items:center;gap:0}
+.step i{width:26px;height:26px;border-radius:50%;border:1.4px solid var(--brand-500);color:var(--brand-600);display:flex;align-items:center;justify-content:center;font-size:16px;font-style:normal;line-height:1;font-weight:400;cursor:pointer}
+.step i.f{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+.step i.dis{border-color:var(--ink-300);color:var(--ink-300);cursor:not-allowed}
+.step b{font-family:var(--mono);font-size:14px;min-width:30px;text-align:center;font-weight:600}
+
+/* --- 开关 / 复选 / 单选 --- */
+.sw2{width:46px;height:27px;border-radius:var(--r-full);background:var(--ink-300);padding:3px;display:flex;transition:background .2s;cursor:pointer;flex:none}
+.sw2 i{width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);display:block;transition:margin-left .2s;margin-left:0}
+.sw2.on{background:var(--ok)}
+.sw2.on i{margin-left:19px}
+.sw2.dis{opacity:.4;cursor:not-allowed}
+.sw2.brand.on{background:var(--brand-500)}
+.cb{width:19px;height:19px;border-radius:5px;border:1.5px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface);cursor:pointer}
+.cb.on{background:var(--brand-500);border-color:var(--brand-500)}
+.cb.on::after{content:"";width:9px;height:5px;border-left:1.8px solid #fff;border-bottom:1.8px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.cb.half{background:var(--brand-500);border-color:var(--brand-500)}
+.cb.half::after{content:"";width:9px;height:2px;background:#fff;border-radius:1px}
+.cb.dis{background:var(--line-100);border-color:var(--line-200);cursor:not-allowed}
+.rd{width:19px;height:19px;border-radius:50%;border:1.5px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface);cursor:pointer}
+.rd.on{border-color:var(--brand-500);border-width:5.5px}
+.rd.dis{background:var(--line-100);border-color:var(--line-200)}
+.chkc{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.chkc.dis{color:var(--ink-400)}
+
+/* --- Chip / 锚点 / 分段 --- */
+.chip{font-size:12.5px;padding:7px 13px;border-radius:var(--r-full);border:1px solid var(--line-200);background:var(--surface);color:var(--ink-700);white-space:nowrap;cursor:pointer}
+.chip.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff;font-weight:600}
+.chip.dis{color:var(--ink-300);background:var(--line-100);cursor:not-allowed}
+.seg{display:inline-flex;background:var(--line-100);border-radius:var(--r-md);padding:3px}
+.seg span{font-size:13px;padding:6px 15px;border-radius:7px;color:var(--ink-500);cursor:pointer;font-weight:500}
+.seg span.on{background:var(--surface);color:var(--ink-900);box-shadow:var(--s1)}
+
+/* --- Tag / Badge --- */
+.tg{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;line-height:1.6;white-space:nowrap}
+.tg.ok{background:var(--ok-bg);color:var(--ok)}
+.tg.warn{background:var(--warn-bg);color:var(--warn)}
+.tg.dan{background:var(--danger-bg);color:var(--danger)}
+.tg.info{background:var(--info-bg);color:var(--info)}
+.tg.off{background:var(--off-bg);color:var(--off)}
+.tg.brand{background:var(--brand-500);color:#fff}
+.tg.out{background:transparent;border:1px solid currentColor}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.dan{background:var(--danger)}.dot.info{background:var(--info)}.dot.off{background:var(--off)}.dot.brand{background:var(--brand-500)}
+.nb{min-width:17px;height:17px;border-radius:var(--r-full);background:var(--danger);color:#fff;font-family:var(--mono);font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.nb.gray{background:var(--ink-400)}
+.nb.brand{background:var(--brand-500)}
+
+/* --- 金额排版（价签母题） --- */
+.amt{font-family:var(--mono);font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;display:inline-flex;align-items:baseline}
+.amt .c{font-size:.62em;font-weight:600;margin-right:1px}
+.amt .d{font-size:.72em;font-weight:600}
+
+/* --- 图标（业务自绘，24×24 网格，2px 圆头描边） --- */
+.ic{width:24px;height:24px;flex:none;display:block}
+.ic path,.ic circle,.ic rect,.ic line{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.ic.f path,.ic.f circle,.ic.f rect{fill:currentColor;stroke:none}
+
+/* --- 分隔 / 骨架 / 进度 --- */
+.hr{height:1px;background:var(--line-200);border:0;margin:0}
+.hrd{height:0;border-top:1px dashed var(--line-200);margin:0}
+.sk{background:linear-gradient(90deg,var(--line-100) 25%,#EAE7E1 37%,var(--line-100) 63%);background-size:400% 100%;animation:shim 1.4s ease infinite;border-radius:6px}
+@keyframes shim{0%{background-position:100% 0}100%{background-position:0 0}}
+.pg{height:5px;border-radius:3px;background:var(--line-100);overflow:hidden}
+.pg i{display:block;height:100%;background:var(--brand-500);border-radius:3px}
+.pg.ok i{background:var(--ok)}
+.pg.warn i{background:var(--warn)}
+.pg.dan i{background:var(--danger)}
+
+/* --- 头像 / 缩略图 --- */
+.av{width:34px;height:34px;border-radius:50%;background:var(--brand-100);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none}
+.th{width:34px;height:34px;border-radius:var(--r-sm);background:var(--line-100);color:var(--ink-400);display:flex;align-items:center;justify-content:center;font-size:9px;flex:none;text-align:center;line-height:1.15;overflow:hidden}
+
+/* --- 列表行（通用） --- */
+.li{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line-100);font-size:14px}
+.li:last-child{border-bottom:0}
+.li .k{color:var(--ink-500);font-size:13.5px}
+.li .v{margin-left:auto;font-weight:500}
+.li .chev{width:7px;height:7px;border-top:1.6px solid var(--ink-300);border-right:1.6px solid var(--ink-300);transform:rotate(45deg);flex:none}
+
+/* --- 表格（通用数据表） --- */
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.dt th{text-align:left;background:var(--paper);color:var(--ink-500);font-weight:500;font-size:11.5px;padding:9px 12px;border-bottom:1px solid var(--line-200);white-space:nowrap}
+table.dt td{padding:10px 12px;border-bottom:1px solid var(--line-100);vertical-align:middle}
+table.dt td.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+table.dt tr:hover td{background:var(--brand-50)}
+
+/* --- 分页 --- */
+.pgn{display:flex;align-items:center;gap:5px;font-size:12px}
+.pgn a{min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-200);border-radius:var(--r-sm);color:var(--ink-700);text-decoration:none;background:var(--surface);padding:0 7px}
+.pgn a.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff;font-weight:600}
+.pgn a.dis{color:var(--ink-300);background:var(--line-100)}
+
+/* --- 面包屑 / 页头 --- */
+.crumb{font-size:12px;color:var(--ink-400);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--ink-900);font-weight:500}
+
+/* --- Token 展示专用 --- */
+.swg{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin:12px 0}
+.sw{border-radius:var(--r-md);height:64px;padding:7px 9px;display:flex;flex-direction:column;justify-content:flex-end;font-size:9.5px;font-family:var(--mono);border:1px solid rgba(28,25,23,.07);line-height:1.5}
+.sw b{font-weight:600;font-size:10px}
+.tokh{display:flex;align-items:center;gap:8px;margin:28px 0 8px;font-size:13.5px;font-weight:600}
+.tokh .n{font-family:var(--mono);font-size:10.5px;color:var(--brand-500);font-weight:400}
+.tspec{display:flex;align-items:baseline;gap:14px;padding:11px 0;border-bottom:1px solid var(--line-100);flex-wrap:wrap}
+.tspec .ex{flex:none;width:200px}
+.tspec .mt{font-family:var(--mono);font-size:11px;color:var(--ink-400);flex:none;width:210px}
+.tspec .us{font-size:12px;color:var(--ink-500);flex:1;min-width:180px}
+.spb{height:12px;background:var(--brand-100);border:1px solid var(--brand-200);border-radius:2px}
+.rul{display:flex;align-items:center;gap:2px;margin:6px 0;font-size:10px;font-family:var(--mono);color:var(--ink-400)}
+.reb{width:13px;height:13px;background:var(--brand-500);border-radius:3px;margin-right:6px}
+.zrow{display:flex;align-items:center;gap:12px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line-100)}
+.zrow .z{font-family:var(--mono);font-size:11px;color:var(--brand-700);width:56px;flex:none}
+.icgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:9px;margin:12px 0}
+.iccell{border:1px solid var(--line-200);border-radius:var(--r-md);padding:11px 6px 8px;text-align:center;background:var(--surface)}
+.iccell .ic{margin:0 auto 7px;color:var(--ink-700)}
+.iccell span{font-size:9.5px;color:var(--ink-500);display:block;line-height:1.35}
+.iccell code{font-size:8.5px;background:transparent;color:var(--ink-400);padding:0}
+.cmp2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.cmp2{grid-template-columns:1fr}}
+.mini{font-size:11px;color:var(--ink-400);line-height:1.6}
+
+/* ============================================================
+   03 · 业务签名组件样式
+   ============================================================ */
+/* 楼栋牌（全站唯一样式，6 个位置复用） */
+.bdg{display:flex;align-items:center;gap:8px;background:var(--brand-500);color:#fff;border-radius:var(--r-md);padding:0 12px;height:44px;font-size:15px;font-weight:600}
+.bdg.off{background:var(--off-bg);color:var(--off);border:1px solid var(--line-200)}
+.bdg.gray{background:var(--surface);color:var(--ink-900);border:1px solid var(--line-200);font-weight:500}
+.bdg .ov{margin-left:auto;font-size:11px;font-weight:500;opacity:.85}
+.bdg .cv{width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-2px,-2px);opacity:.9;flex:none}
+.bdg.gray .cv{border-color:var(--ink-400)}
+
+/* 库存格 */
+.sc2{flex:1;min-width:0;border:1px solid var(--line-200);border-radius:var(--r-md);padding:7px 4px 8px;text-align:center;background:var(--surface);position:relative}
+.sc2 .v{font-family:var(--mono);font-size:17px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.sc2 .k{font-size:9.5px;color:var(--ink-400);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc2.low{background:var(--warn-bg);border-color:#EFD9B4}.sc2.low .v{color:var(--warn)}
+.sc2.zero{background:var(--danger-bg);border-color:#E9C9C4}.sc2.zero .v{color:var(--danger)}
+.sc2.off{background:var(--off-bg);border-color:var(--line-200)}.sc2.off .v{color:var(--off)}
+.sc2.edit{border-color:var(--brand-500);box-shadow:0 0 0 3px rgba(242,107,33,.13)}
+.sc2 .ed{position:absolute;inset:3px;border-radius:7px;border:1.5px dashed var(--brand-400);pointer-events:none}
+
+/* 时间轴条（24h 三层） */
+.ta{position:relative;height:58px;margin:8px 0 0}
+.ta .track{position:absolute;left:0;right:0;top:16px;height:7px;border-radius:4px;background:var(--line-100)}
+.ta .sg{position:absolute;top:16px;height:7px;border-radius:4px}
+.ta .lk{position:absolute;top:26px;height:7px;border-radius:4px}
+.ta .mk{position:absolute;top:9px;width:1.5px;height:22px;background:var(--ink-300)}
+.ta .tk,.ta .tick{position:absolute;font-size:9px;font-family:var(--mono);color:var(--ink-400);top:39px;transform:translateX(-50%)}
+.ta .now{position:absolute;top:3px;width:13px;height:13px;border-radius:50%;background:var(--brand-500);border:2.5px solid #fff;box-shadow:0 0 0 1.5px var(--brand-500);transform:translateX(-50%)}
+.ta .cut{position:absolute;top:6px;width:2px;height:27px;background:var(--warn)}
+.ta .lbl{position:absolute;font-size:9.5px;color:var(--ink-500);top:-6px;font-family:var(--mono)}
+
+/* 商品卡行 */
+.pi{display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid var(--line-100);background:var(--surface)}
+.pi .bd{flex:1;min-width:0;display:flex;flex-direction:column}
+.pi .nm{font-size:14px;font-weight:500;line-height:1.4}
+.pi .ds{font-size:11.5px;color:var(--ink-400);margin-top:3px}
+.pi .bt{margin-top:auto;display:flex;align-items:flex-end;gap:8px;padding-top:7px}
+.pi .rt{margin-left:auto;text-align:right}
+.pi.grayed .th{filter:grayscale(1);opacity:.5}
+.pi.grayed .nm{color:var(--ink-400)}
+.pi .th{width:72px;height:72px;border-radius:var(--r-md);flex:none;background:var(--line-100);display:flex;align-items:center;justify-content:center;font-size:9.5px;color:var(--ink-400);text-align:center;line-height:1.2;overflow:hidden}
+.pi .th.brand{background:var(--brand-50);color:var(--brand-600)}
+.pi .add{width:26px;height:26px;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;font-weight:300;padding-bottom:2px;flex:none}
+.pi .gray{width:26px;height:26px;border-radius:50%;background:var(--off-bg);color:var(--off);display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+.step{display:inline-flex;align-items:center;gap:0}
+.step i{width:26px;height:26px;border-radius:50%;border:1.4px solid var(--brand-500);color:var(--brand-600);display:flex;align-items:center;justify-content:center;font-size:16px;font-style:normal;line-height:1;cursor:pointer}
+.step i.f{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+.step i.dis{border-color:var(--ink-300);color:var(--ink-300);cursor:not-allowed}
+.step b{font-family:var(--mono);font-size:14px;min-width:30px;text-align:center;font-weight:600}
+
+/* 吸底购物车条 */
+.cartbar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-full);padding:8px 8px 8px 14px;box-shadow:var(--s1)}
+.cartbar .cn{width:26px;height:26px;border-radius:50%;background:var(--brand-500);color:#fff;font-size:12px;font-weight:600;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:none}
+.cartbar .go{background:var(--brand-500);color:#fff;border-radius:var(--r-full);padding:9px 18px;font-size:13px;font-weight:600;flex:none}
+
+/* 订单卡 */
+.oc{border:1px solid var(--line-200);border-radius:var(--r-md);background:var(--surface);padding:12px 13px}
+.oc .hd{display:flex;align-items:center;gap:7px;padding-bottom:10px;border-bottom:1px dashed var(--line-200)}
+.oc .bd{padding:10px 0 0}
+
+/* 配送行 */
+.drow{display:flex;align-items:center;gap:11px;padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--line-100)}
+.drow .rm{font-family:var(--mono);font-size:15px;font-weight:600;min-width:54px}
+.drow .mid{flex:1;min-width:0}
+.drow .ck{width:26px;height:26px;border-radius:50%;border:1.6px solid var(--ink-300);flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface)}
+.drow.done .ck{background:var(--ok);border-color:var(--ok)}
+.drow.done .rm{color:var(--ink-400)}
+.drow.done .mid{color:var(--ink-400)}
+.dgrp{display:flex;align-items:center;gap:8px;padding:10px 14px 7px;background:var(--paper)}
+.dgrp .f{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-700);padding:3px 9px;border-radius:var(--r-full);background:var(--line-100)}
+.dfold{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--ok-bg);color:var(--ok);font-size:12.5px;font-weight:500}
+
+/* 撤销条 */
+.undo{display:flex;align-items:center;gap:10px;background:#221E1B;color:#fff;border-radius:var(--r-md);padding:10px 12px;position:relative;overflow:hidden}
+.undo .ut{font-size:12.5px;flex:1}
+.undo .ua{font-size:12.5px;font-weight:600;color:#FFAE7E}
+.undo .ub{position:absolute;left:0;bottom:0;height:2.5px;background:#FFAE7E;width:100%}
+
+/* 双同步说明卡 */
+.sync2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.sync2{grid-template-columns:1fr}}
+.sync2 .s{background:var(--paper);border:1px solid var(--line-200);border-radius:var(--r-md);padding:12px 13px}
+.sync2 .s.a{border-color:var(--brand-300);background:var(--brand-50)}
+.sync2 .s .h{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;margin-bottom:7px}
+.sync2 .s .ix{width:18px;height:18px;border-radius:5px;background:var(--brand-500);color:#fff;font-size:10px;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:none}
+.sync2 .s.b .ix{background:var(--ink-400)}
+.sync2 .s .d{font-size:11.5px;color:var(--ink-500);line-height:1.7}
+.sync2 .s .d b{color:var(--ink-900);font-weight:600}
+.sync2 .s .d .no{color:var(--danger);font-weight:600}
+
+/* 账本行 / 小票 */
+.ledg{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line-100)}
+.ledg:last-child{border-bottom:0}
+.rct{background:var(--surface);border:1px solid var(--line-200);border-radius:var(--r-md);padding:14px}
+.rct .rw{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 0}
+.rct .rw .k{color:var(--ink-500)}
+.rct .rw .v{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.rct .rw.tot{border-top:1px dashed var(--line-200);margin-top:6px;padding-top:11px;font-size:14.5px;font-weight:600}
+.rct .rw.tot .k{color:var(--ink-900);font-weight:600}
+.rct .rw.tot .v{color:var(--danger);font-size:17px}
+
+/* 双账户卡 */
+.acct{border:1px solid var(--line-200);border-radius:var(--r-md);background:var(--surface);padding:13px}
+.acct.warn{border-color:#EFD9B4;background:var(--warn-bg)}
+.acct.dan{border-color:#E9C9C4;background:var(--danger-bg)}
+.acct .top{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-500)}
+.acct .big{font-family:var(--mono);font-size:24px;font-weight:600;margin:7px 0 3px;letter-spacing:-.02em}
+.acct .btnx{display:block;text-align:center;font-size:12.5px;font-weight:600;border-radius:var(--r-md);padding:9px 0;margin-top:11px;background:var(--brand-500);color:#fff}
+
+/* 三数字条 */
+.dash{display:flex;gap:8px}
+.dash .m{flex:1;background:var(--paper);border:1px solid var(--line-100);border-radius:var(--r-md);padding:9px 11px}
+.dash .m .k{font-size:10.5px;color:var(--ink-500)}
+.dash .m .v{font-family:var(--mono);font-size:19px;font-weight:600;line-height:1.25}
+
+/* 步骤条（上线流水线） */
+.pstep{display:flex;gap:0;overflow-x:auto;padding:6px 0}
+.pstep .st{flex:none;min-width:118px;padding-right:6px}
+.pstep .bar{height:4px;border-radius:2px;background:var(--line-100);margin-bottom:7px}
+.pstep .st.done .bar{background:var(--ok)}
+.pstep .st.cur .bar{background:var(--warn)}
+.pstep .st .t{font-size:11px;font-weight:600}
+.pstep .st .d{font-size:10px;color:var(--ink-400);font-family:var(--mono)}
+
+/* 隐私护栏卡 */
+.guard{border:1px solid #C6DCF1;background:var(--info-bg);border-radius:var(--r-md);padding:13px 14px}
+.guard .hh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--info);margin-bottom:8px}
+.guard .li2{display:flex;gap:8px;font-size:12px;color:#17497F;line-height:1.7;padding:3px 0}
+
+/* ============================================================
+   04 · 反馈与浮层样式
+   ============================================================ */
+.toast{display:inline-flex;align-items:flex-start;gap:9px;background:#221E1B;color:#fff;border-radius:var(--r-md);padding:11px 14px;font-size:13px;box-shadow:var(--s2);max-width:340px;line-height:1.6}
+.toast .ti{width:16px;height:16px;flex:none;margin-top:1px}
+.toast.ok .ti{color:#7DD99B}.toast.warn .ti{color:#FFC266}.toast.dan .ti{color:#FF8E7E}.toast.info .ti{color:#8FC2F0}
+.toast b{font-weight:600}
+.mask{background:rgba(28,25,23,.45);border-radius:var(--r-md);padding:24px 18px;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--s2);overflow:hidden;width:100%;max-width:320px}
+.modal .mh{padding:22px 20px 0;text-align:center}
+.modal .mt{font-size:16px;font-weight:600;margin-bottom:9px}
+.modal .mb{font-size:13px;color:var(--ink-500);line-height:1.75}
+.modal .mb .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0}
+.modal .mb .kv b{font-family:var(--mono);color:var(--ink-900);font-weight:600}
+.modal .mf{display:flex;border-top:1px solid var(--line-200);margin-top:20px}
+.modal .mf span{flex:1;text-align:center;padding:14px 0;font-size:15px;font-weight:500;color:var(--ink-700)}
+.modal .mf span+span{border-left:1px solid var(--line-200)}
+.modal .mf .p{color:var(--brand-700);font-weight:600}
+.modal .mf .d{color:var(--danger);font-weight:600}
+.drawer{background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;overflow:hidden;box-shadow:var(--s2);width:100%;max-width:400px}
+.drawer .dh{padding:15px 16px 13px;border-bottom:1px solid var(--line-200);display:flex;align-items:center;gap:9px}
+.drawer .dh .t{font-size:15px;font-weight:600}
+.drawer .dh .x{margin-left:auto;width:26px;height:26px;border-radius:50%;background:var(--line-100);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--ink-500)}
+.drawer .db{padding:4px 0 8px}
+.sheet{background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;overflow:hidden;width:100%;max-width:400px;box-shadow:var(--s2)}
+.sheet .sh{padding:13px 16px 10px;font-size:11.5px;color:var(--ink-400);text-align:center;border-bottom:1px solid var(--line-100)}
+.sheet .it{padding:16px;font-size:15px;text-align:center;border-bottom:1px solid var(--line-100)}
+.sheet .it.dan{color:var(--danger)}
+.sheet .it.cancel{font-weight:600;border-bottom:0;background:var(--paper)}
+.sheet .it .sub{display:block;font-size:11px;color:var(--ink-400);margin-top:3px;font-weight:400}
+.bub{position:relative;background:var(--ink-900);color:#fff;border-radius:var(--r-md);padding:10px 13px;font-size:12px;line-height:1.65;max-width:270px;box-shadow:var(--s2)}
+.bub::after{content:"";position:absolute;bottom:-5px;left:26px;width:10px;height:10px;background:var(--ink-900);transform:rotate(45deg)}
+.bub b{color:#FFAE7E;font-weight:600}
+.bub .bx{position:absolute;top:8px;right:9px;font-size:11px;color:rgba(255,255,255,.45)}
+.nbdot{display:inline-flex;align-items:center;gap:7px;font-size:12.5px}
+.nbdot .p{width:8px;height:8px;border-radius:50%;background:var(--danger);flex:none}
+.nbdot .p.g{background:var(--ink-300)}
+
+/* ============================================================
+   真机框架与窗口框架
+   ============================================================ */
+.ph{width:375px;flex:none;height:812px;background:var(--surface);border:1px solid var(--line-200);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:var(--s1)}
+.ph .sb{height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 7px;font-size:13px;font-weight:600}
+.ph .sb .r{display:flex;align-items:center;gap:5px;font-size:11px}
+.ph .sb .b3{display:flex;align-items:flex-end;gap:1.5px}
+.ph .sb .b3 i{display:block;width:3px;background:var(--ink-900);border-radius:1px;opacity:.9}
+.ph .sb .bat{width:21px;height:10.5px;border:1.2px solid var(--ink-900);border-radius:3px;position:relative;opacity:.9}
+.ph .sb .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--ink-900);border-radius:0 1px 1px 0}
+.ph .sb .bat i{position:absolute;inset:1.5px;width:70%;background:var(--ink-900);border-radius:1px;display:block}
+.ph .nb{height:44px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600;position:relative;border-bottom:1px solid var(--line-100)}
+.ph .nb .bk{position:absolute;left:14px;top:50%;width:9px;height:9px;border-left:1.7px solid var(--ink-900);border-bottom:1.7px solid var(--ink-900);transform:translateY(-50%) rotate(45deg)}
+.ph .nb .cap{position:absolute;right:6px;top:6px;width:87px;height:32px;border:1px solid var(--line-200);border-radius:999px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--ink-500)}
+.ph .nb .cap u{width:5px;height:5px;border-radius:50%;background:var(--ink-900);opacity:.6}
+.ph .nb .cap s{width:5px;height:5px;border-radius:50%;border:1px solid var(--ink-400);display:block}
+.ph .bd{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--paper);display:flex;flex-direction:column}
+.ph .bd>*{flex:none}
+.ph .tb{height:50px;flex:none;border-top:1px solid var(--line-200);display:flex;background:var(--surface);align-items:center}
+.ph .tb .t{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--ink-400)}
+.ph .tb .t.on{color:var(--brand-500);font-weight:500}
+.ph .tb .t .gi{width:22px;height:22px;border-radius:7px;border:1.8px solid currentColor;position:relative}
+.ph .tb .t .gi::after{content:"";position:absolute;inset:4px;border-radius:3px;background:currentColor;opacity:.28}
+.ph .tb .t.on .gi::after{opacity:1}
+.ph .hb{height:34px;flex:none;display:flex;align-items:center;justify-content:center}
+.ph .hb i{width:134px;height:5px;border-radius:3px;background:var(--ink-900);opacity:.22;display:block}
+.win{width:100%;background:var(--surface);border:1px solid var(--line-200);border-radius:10px;overflow:hidden;box-shadow:var(--s1)}
+.win .wt{height:34px;background:var(--line-100);display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--line-200)}
+.win .wt u{width:9px;height:9px;border-radius:50%;background:#E0DDD6;display:block}
+.win .wt span{margin-left:10px;font-size:11px;color:var(--ink-400);font-family:var(--mono)}
+.win .wb{display:flex;min-height:300px}
+.win .ws{width:166px;flex:none;border-right:1px solid var(--line-200);background:var(--paper);padding:12px 0}
+.win .ws .lg{display:flex;align-items:center;gap:7px;padding:0 14px 12px;font-size:12.5px;font-weight:600}
+.win .ws .lg .sq{width:22px;height:22px;border-radius:6px;background:var(--brand-500);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;flex:none}
+.win .ws a{display:block;padding:8px 14px;font-size:12.5px;color:var(--ink-500);text-decoration:none}
+.win .ws a.on{background:var(--brand-50);color:var(--brand-700);font-weight:600;border-right:2px solid var(--brand-500)}
+.win .wm{flex:1;min-width:0;padding:15px}
+.frames{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin:16px 0}
+.fr1{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.fr1 .cap2{font-size:12px;color:var(--ink-500);line-height:1.65;max-width:375px}
+.fr1 .cap2 b{color:var(--ink-900);font-weight:600;display:block;margin-bottom:2px}
+.fr1.w660{width:100%;max-width:660px}.fr1.w660 .cap2{max-width:100%}
+.fr1.w900{width:100%;max-width:900px}.fr1.w900 .cap2{max-width:100%}
+/* 闭环与覆盖用 */
+.tagp2{display:inline-block;font-size:10px;font-family:var(--mono);border-radius:4px;padding:1px 6px;white-space:nowrap}
+.tagp2.pv{background:var(--danger-bg);color:var(--danger)}
+.tagp2.pk{background:var(--ok-bg);color:var(--ok)}
+.tagp2.pw{background:var(--warn-bg);color:var(--warn)}
+.tagp2.pi{background:var(--info-bg);color:var(--info)}
+.tagp2.po{background:var(--line-100);color:var(--ink-500)}
+.ckbox{width:13px;height:13px;border-radius:3.5px;border:1.4px solid var(--ink-300);display:inline-block;vertical-align:-2px}
+.ckbox.on{background:var(--brand-500);border-color:var(--brand-500)}
+.pg2{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin:16px 0}
+.spc{border:1px solid var(--line-200);border-radius:var(--r-md);background:var(--surface);overflow:hidden}
+.spc .sh{padding:10px 13px;border-bottom:1px solid var(--line-200);background:var(--paper);display:flex;align-items:center;gap:8px}
+.spc .sh .id{font-family:var(--mono);font-size:10.5px;color:var(--brand-700);background:var(--brand-50);border:1px solid var(--brand-200);border-radius:4px;padding:1px 5px;flex:none}
+.spc .sh h4{font-size:12.5px;margin:0}
+.spc .sb2{padding:11px 13px;font-size:11.5px;color:var(--ink-500);line-height:1.75}
+.spc .sb2 .ln{display:flex;gap:7px;padding:2.5px 0}
+.spc .sb2 .ln b{color:var(--ink-900);font-weight:600;flex:none}
+/* 网页端按钮（与 .b 体系同形，尺寸按后台密度下调） */
+.wbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--font);font-size:13px;font-weight:600;letter-spacing:.01em;height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--line-200);background:var(--surface);color:var(--ink-900);cursor:pointer;transition:background .15s ease}
+.wbtn:hover{background:var(--line-100)}
+.wbtn.pri{background:var(--brand-500);border-color:transparent;color:#fff}
+.wbtn.pri:hover{background:var(--brand-600)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="tb-logo">零</span>
+  <span class="tb-t">全量页面与闭环</span>
+  <span class="tb-v">v3.0</span>
+  <nav class="tb-nav">
+    <a href="#c0">00 闭环总览</a>
+    <a href="#c1">01 学生端</a>
+    <a href="#c2">02 商户小程序</a>
+    <a href="#c3">03 商户网页</a>
+    <a href="#c4">04 平台后台</a>
+    <a href="#c5">05 字段字典</a>
+    <a href="#c6">06 闭环校验</a>
+    <a href="#c7">07 验收清单</a>
+  </nav>
+</div>
+<main class="wrap">
+
+<!-- ============ 00 闭环总览 ============ -->
+<section id="c0">
+  <h1>全量页面与闭环校验</h1>
+  <blockquote style="border-left:3px solid var(--brand-500);margin:14px 0 6px;padding:2px 0 2px 16px;color:var(--ink-700);font-size:14px;line-height:1.85">
+    这个文件回答一个问题：<b>「做完了吗？」</b><br>
+    先用 42 条闭环穷举"系统必须能走通的事"，再用 51 个页面逐条对应，最后用字段字典保证<b>每一个界面元素都有数据来源</b>。
+  </blockquote>
+
+  <h3>0.1 总量</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">闭环</span><h4>42 条</h4></div><div class="sb2">学生端 13 · 商户小程序 8 · 商户网页 10 · 平台后台 11</div></div>
+    <div class="spc"><div class="sh"><span class="id">页面</span><h4>51 个</h4></div><div class="sb2">学生端 17 · 商户小程序 10 · 商户网页 11 · 平台后台 13</div></div>
+    <div class="spc"><div class="sh"><span class="id">组件</span><h4>36 类</h4></div><div class="sb2">原子 14 + 业务签名 16 + 反馈浮层 6，每类全状态</div></div>
+    <div class="spc"><div class="sh"><span class="id">字段</span><h4>171 个</h4></div><div class="sb2">含来源库、类型、格式、可见性、隐私级别</div></div>
+  </div>
+
+  <h3>0.2 闭环清单（42 条，按角色）</h3>
+  <p class="sub">每条闭环都必须能<b>完整走通且回到一个稳定状态</b>。"走不通"的典型表现是：中间少了某一个页面，或某个状态的出口是死路。</p>
+
+  <h4 style="font-size:13px;margin:20px 0 8px">A · 学生端 13 条</h4>
+  <table class="cs">
+    <tr><th style="width:8%">编号</th><th style="width:24%">闭环名称</th><th style="width:30%">链路</th><th>终态 / 断链风险</th></tr>
+    <tr><td class="m">CS-01</td><td>进入与租户解析</td><td>启动 → 本地缓存闪屏 → resolve(appid) → 首页</td><td><span class="tagp2 pk">终态：首页</span> 断链风险：AppID 未匹配时白屏 → 必须有「店铺未开通」页</td></tr>
+    <tr><td class="m">CS-02</td><td>楼栋选择与记忆</td><td>首次 → 楼栋抽屉 → 选中 → 记住（本地 + 服务端）→ 下次直入</td><td><span class="tagp2 pk">终态：进入所属楼栋首页</span> 单楼栋商户自动跳过此步（§4.9）</td></tr>
+    <tr><td class="m">CS-03</td><td>浏览与加购</td><td>首页 → 分类 / 搜索 → 商品详情抽屉 → 加购 → 吸底条</td><td><span class="tagp2 pk">终态：购物车有商品</span> 断链风险：加购后无反馈 → 必须展开步进器</td></tr>
+    <tr><td class="m">CS-04</td><td>下单与支付</td><td>购物车面板 → 结算 → 地址 → 提交 → 支付中转 → 微信支付 → 结果页</td><td><span class="tagp2 pk">终态：订单=待接单 / 待付款</span> 断链风险：银行延迟时误判"支付失败" → 必须有「处理中」页</td></tr>
+    <tr><td class="m">CS-05</td><td>履约跟踪</td><td>待付款 → 待接单 → 配送中 → 已送达</td><td><span class="tagp2 pk">终态：已送达</span> <b>无"确认收货"</b>（D15）；送达后 N 小时自动完成兜底</td></tr>
+    <tr><td class="m">CS-06</td><td>取消与退款</td><td>待付款超时 / 待接单取消 → 退款 → 已退款</td><td><span class="tagp2 pk">终态：已退款 + 库存回补</span> 服务费同步返还</td></tr>
+    <tr><td class="m">CS-07</td><td>缺货处理</td><td>加购后售罄 → 购物车标灰 → 移出 → 结算</td><td><span class="tagp2 pk">终态：可结算</span> 断链风险：静默移除 → 必须保留 + 「移出」按钮</td></tr>
+    <tr><td class="m">CS-08</td><td>时间窗</td><td>可下单 → 即将截单（&lt;30min）→ 已截单 → 次日恢复</td><td><span class="tagp2 pk">终态：次日 06:30 恢复</span> 已截单不清空购物车</td></tr>
+    <tr><td class="m">CS-09</td><td>本栋停送</td><td>浏览中该栋停送 → 提示 → 切换楼栋（购物车清空 + 轻提示）</td><td><span class="tagp2 pk">终态：在新楼栋可下单</span> 断链风险：静默清空 → 必须轻提示</td></tr>
+    <tr><td class="m">CS-10</td><td>跨楼栋拦截</td><td>地址楼栋 ≠ 购物车楼栋 → 标红拦截 → 改地址</td><td><span class="tagp2 pk">终态：地址与购物车一致</span> 商品保留不丢</td></tr>
+    <tr><td class="m">CS-11</td><td>楼栋未覆盖</td><td>抽屉内无匹配 → 「本店暂未覆盖」→ 列出覆盖范围 → 联系店家</td><td><span class="tagp2 pk">终态：明确知道自己不被覆盖</span> 断链风险：写"暂无楼栋" → 用户不知是自己的错还是系统坏</td></tr>
+    <tr><td class="m">CS-12</td><td>再来一单 / 地址簿</td><td>订单详情 → 再来一单（按当前楼栋可用性过滤）→ 加购；地址簿增删改 + 送他人房间</td><td><span class="tagp2 pk">终态：购物车或新地址就绪</span> 再来一单必须处理"商品已下架/该栋售罄"</td></tr>
+    <tr><td class="m">CS-13</td><td>订阅消息接收</td><td>接单通知 / 送达通知（一次授权只发一条）</td><td><span class="tagp2 pk">终态：站内红点兜底</span> 只发最关键的一次，其余靠订单 Tab 红点</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">B · 商户端小程序 8 条</h4>
+  <table class="cs">
+    <tr><td style="width:8%" class="m">CM-01</td><td style="width:24%">登录与身份</td><td style="width:30%">学生端内商户入口 → 微信授权 → 校验租户管理员 → 工作台</td><td><span class="tagp2 pk">终态：进入配送清单</span> 非管理员 → 提示"当前仅店主可登录"（D10 单管理员）</td></tr>
+    <tr><td class="m">CM-02</td><td>开关店</td><td>营业中 ⇄ 休息中（关店需二次确认 + 影响范围）</td><td><span class="tagp2 pk">终态：学生端即时可见</span> 盘中订单不受影响</td></tr>
+    <tr><td class="m">CM-03</td><td>接单</td><td>新单 ▶ 红点/通知 → 待接单卡 → 接单 → 进入配送清单</td><td><span class="tagp2 pk">终态：订单=配送中</span> 断链风险：只在"订单"页接单 → 首 Tab 必须是配送清单</td></tr>
+    <tr><td class="m">CM-04</td><td>配送</td><td>配送清单 → 逐单勾选 → 撤销(5s) → 批量送达(确认) → 已送达 → 通知学生</td><td><span class="tagp2 pk">终态：订单=已送达</span> 折叠不清空；批量需写数量与房号</td></tr>
+    <tr><td class="m">CM-05</td><td>库存快改</td><td>点格 → 改数 → 立即生效；减到 0 → 轻提示「已置为售罄 · 撤销」</td><td><span class="tagp2 pk">终态：学生端库存即时更新</span> 并发去抖 300ms</td></tr>
+    <tr><td class="m">CM-06</td><td>单栋停送</td><td>楼栋列表 → 停送开关 → 确认 → 学生端显示「今日已停送」→ 恢复</td><td><span class="tagp2 pk">终态：次日或手动恢复</span> 库存保留不清零</td></tr>
+    <tr><td class="m">CM-07</td><td>账户充值</td><td>余额预警 → 充值指引（线下转账）→ 平台上账 → 到账通知 → 恢复接单</td><td><span class="tagp2 pk">终态：余额 &gt; 0，可接单</span> 文案中性，禁"欠费"</td></tr>
+    <tr><td class="m">CM-08</td><td>退款处理</td><td>收到退款单 → 查看 → 同意/拒绝 → 学生收到结果</td><td><span class="tagp2 pk">终态：已退款 / 已拒绝（学生可申诉）</span> 未送达回库 + 服务费返还</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">C · 商户端网页 10 条</h4>
+  <table class="cs">
+    <tr><td style="width:8%" class="m">CW-01</td><td style="width:24%">楼栋维护</td><td style="width:30%">新增 / 改名 / 排序 / 停用 / 暂停 / 一键配置全部楼栋 / 时间窗</td><td><span class="tagp2 pk">终态：学生端立即生效（无需发版）</span> 停用不可删（有历史引用）</td></tr>
+    <tr><td class="m">CW-02</td><td>商品管理</td><td>新建（<b>默认同步全部启用楼栋</b>）→ 上架/下架 → 编辑 → 批量</td><td><span class="tagp2 pk">终态：商品在各栋状态确定</span> 下架 ≠ 售罄</td></tr>
+    <tr><td class="m">CW-03</td><td>库存矩阵</td><td>改格 → 同步上架 → 同步库存数值 → 调拨 → 库存流水</td><td><span class="tagp2 pk">终态：矩阵与实际货一致</span> 两个同步必须分开（AC-10）</td></tr>
+    <tr><td class="m">CW-04</td><td>Excel 导入</td><td>下载模板 → 上传 → 校验 → 结果（下载错误行 / 跳过继续）</td><td><span class="tagp2 pk">终态：商品与库存落库</span> 错误按行号 + 人话原因</td></tr>
+    <tr><td class="m">CW-05</td><td>订单管理</td><td>列表（按楼栋筛/分组）→ 详情 → 退款处理 / 重新配送</td><td><span class="tagp2 pk">终态：订单归档</span> 含配送清单打印</td></tr>
+    <tr><td class="m">CW-06</td><td>时间窗配置</td><td>设门禁窗 → 设营业时间 → 系统自动算截单 → 学生端生效</td><td><span class="tagp2 pk">终态：截单时间早于门禁结束</span> 超出部分系统自动截断并提示</td></tr>
+    <tr><td class="m">CW-07</td><td>店铺设置</td><td>公告 / 营业时间 / 起送价 / 配送费 / 主题色 → 保存 → 生效</td><td><span class="tagp2 pk">终态：学生端即时生效</span> 主题色过护栏校验</td></tr>
+    <tr><td class="m">CW-08</td><td>账本与账单</td><td>余额明细 / 订阅详情 → 汇总小票 → 导出</td><td><span class="tagp2 pk">终态：可对账</span> 每笔扣费可回链订单</td></tr>
+    <tr><td class="m">CW-09</td><td>数据导出</td><td>选范围 → 生成 → 下载</td><td><span class="tagp2 pk">终态：文件落盘</span> 长任务，可离开页面</td></tr>
+    <tr><td class="m">CW-10</td><td>跨栋调拨</td><td>选商品 + 来源栋 + 目标栋 + 数量 → 确认 → 双方库存变化 + 流水</td><td><span class="tagp2 pk">终态：两栋库存已调整</span> 调拨是例外不是常态（§4.4）</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">D · 平台后台 11 条</h4>
+  <table class="cs">
+    <tr><td style="width:8%" class="m">CP-01</td><td style="width:24%">创建租户</td><td style="width:30%">填资料 → 选学校 → 一键建库 → 带出楼栋模板 → 绑定 AppID/商户号</td><td><span class="tagp2 pk">终态：租户=待上线</span> 自动创建「默认楼栋」（单楼栋降级用）</td></tr>
+    <tr><td class="m">CP-02</td><td>上线流水线</td><td>12 阶段 → 卡点（卡 N 天 + 上次触达）→ 驳回返工 → 重提 → 完成</td><td><span class="tagp2 pk">终态：配置营业</span> 驳回用琥珀不用红</td></tr>
+    <tr><td class="m">CP-03</td><td>代码推送</td><td>选版本 → 灰度 1–2 家 → 验证 → 批量（含排除名单）→ 失败重推</td><td><span class="tagp2 pk">终态：全部推送完成</span> 一个 bug 不能让 N 家同时挂</td></tr>
+    <tr><td class="m">CP-04</td><td>版本发布看板</td><td>看板 → 三类筛选：还停在旧版本 / 已推送未提审 / 推送失败</td><td><span class="tagp2 pk">终态：收敛完成（全部已发布）</span> 推动权在商户，只能催</td></tr>
+    <tr><td class="m">CP-05</td><td>两道闸门</td><td>订阅到期列表 + 余额预警列表 → 手动上账 → 自动解冻</td><td><span class="tagp2 pk">终态：闸门解除</span> 提前 15/7/3 天提醒</td></tr>
+    <tr><td class="m">CP-06</td><td>对账</td><td>账单生成 → 差额标记 → 差异处理 → 归档</td><td><span class="tagp2 pk">终态：差额=0 或已说明</span> 未扣必须标红</td></tr>
+    <tr><td class="m">CP-07</td><td>强制停用 / 恢复</td><td>选租户 → 停用（二次确认）→ 立即锁单 + 前台提示 → 恢复</td><td><span class="tagp2 pk">终态：可恢复</span> 数据保留</td></tr>
+    <tr><td class="m">CP-08</td><td>密钥管理</td><td>收集 → 加密入库 → 失效告警 → 替换（只可替换不可查看）</td><td><span class="tagp2 pk">终态：新密钥可用</span> 不可查看是实现要求，不是权限</td></tr>
+    <tr><td class="m">CP-09</td><td>工单分流</td><td>创建 → 按技术/经营分类路由 → 处理 → 关闭</td><td><span class="tagp2 pk">终态：已关闭</span> 技术归你，经营归合伙人</td></tr>
+    <tr><td class="m">CP-10</td><td>学校与楼栋模板</td><td>预置学校 → 预置楼栋 → 建租户时带出 → 商户勾选</td><td><span class="tagp2 pk">终态：租户楼栋就绪</span> 学校字典仅作模板来源</td></tr>
+    <tr><td class="m">CP-11</td><td>监控告警</td><td>活跃度 / 订单量 / 支付异常 / 审核卡点 / 密钥失效 → 告警 → 处理</td><td><span class="tagp2 pk">终态：告警已消除</span> 日志带 tenant_code</td></tr>
+  </table>
+
+  <h3>0.3 页面清单（51 个）</h3>
+  <p class="sub"><b>绘制</b>= 本文件或前两个文件有 1:1 结构稿；<b>规格</b>= 本文件给出布局规格 + 完整字段表。两者对开发等价，规格型页面不需要看图就能实现。</p>
+
+  <h4 style="font-size:13px;margin:20px 0 8px">学生端（17）</h4>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:24%">页面</th><th style="width:12%">类型</th><th style="width:14%">交付</th><th>承载闭环</th></tr>
+    <tr><td class="m">S-01</td><td>启动闪屏</td><td>过渡页</td><td><span class="tagp2 pk">绘制</span> B§01</td><td class="m">CS-01</td></tr>
+    <tr><td class="m">S-02</td><td>租户解析中骨架</td><td>加载</td><td><span class="tagp2 pk">绘制</span> B§01</td><td class="m">CS-01</td></tr>
+    <tr><td class="m">S-03</td><td>店铺未开通（解析失败）</td><td>异常</td><td><span class="tagp2 pk">绘制</span> B§01</td><td class="m">CS-01</td></tr>
+    <tr><td class="m">S-04</td><td>点单首页</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-02 03 08</td></tr>
+    <tr><td class="m">S-05</td><td>楼栋选择抽屉</td><td>浮层</td><td><span class="tagp2 pk">绘制</span> A§C-03</td><td class="m">CS-02 09 11</td></tr>
+    <tr><td class="m">S-06</td><td>分类页</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-03</td></tr>
+    <tr><td class="m">S-07</td><td>搜索页</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CS-03</td></tr>
+    <tr><td class="m">S-08</td><td>商品详情抽屉</td><td>浮层</td><td><span class="tagp2 pk">绘制</span> A§C-03</td><td class="m">CS-03</td></tr>
+    <tr><td class="m">S-09</td><td>购物车面板</td><td>浮层</td><td><span class="tagp2 pk">绘制</span> A§C-03</td><td class="m">CS-03 04 07</td></tr>
+    <tr><td class="m">S-10</td><td>结算页</td><td>流程</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-04 08 10</td></tr>
+    <tr><td class="m">S-11</td><td>地址簿（列表 / 新增 / 编辑）</td><td>设置</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-10 12</td></tr>
+    <tr><td class="m">S-12</td><td>支付中转 / 结果（成功 / 失败 / 处理中）</td><td>过渡页</td><td><span class="tagp2 pk">绘制</span> B§01</td><td class="m">CS-04</td></tr>
+    <tr><td class="m">S-13</td><td>订单列表</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-05 06 12</td></tr>
+    <tr><td class="m">S-14</td><td>订单详情</td><td>详情</td><td><span class="tagp2 pk">绘制</span> §01</td><td class="m">CS-05 06 12</td></tr>
+    <tr><td class="m">S-15</td><td>退款申请页</td><td>流程</td><td><span class="tagp2 pw">规格</span></td><td class="m">CS-06</td></tr>
+    <tr><td class="m">S-16</td><td>我的（含关于本店 / 隐私政策 / 联系客服）</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CS-11</td></tr>
+    <tr><td class="m">S-17</td><td>订单状态页（截单 / 停送 / 休息 / 未覆盖）</td><td>异常</td><td><span class="tagp2 pk">绘制</span> A§B-04</td><td class="m">CS-08 09 11</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">商户端小程序（10）</h4>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:24%">页面</th><th style="width:12%">类型</th><th style="width:14%">交付</th><th>承载闭环</th></tr>
+    <tr><td class="m">M-01</td><td>配送清单（首 Tab · 主视图）</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §02</td><td class="m">CM-03 04</td></tr>
+    <tr><td class="m">M-02</td><td>商户端订单详情</td><td>详情</td><td><span class="tagp2 pk">绘制</span> §02</td><td class="m">CM-04 08</td></tr>
+    <tr><td class="m">M-03</td><td>库存快改</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §02</td><td class="m">CM-05</td></tr>
+    <tr><td class="m">M-04</td><td>商品列表（售罄开关）</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-05</td></tr>
+    <tr><td class="m">M-05</td><td>我的（双账户卡 + 开关店 + 设置入口）</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §02</td><td class="m">CM-02 07</td></tr>
+    <tr><td class="m">M-06</td><td>余额明细</td><td>详情</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-07</td></tr>
+    <tr><td class="m">M-07</td><td>订阅详情</td><td>详情</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-07</td></tr>
+    <tr><td class="m">M-08</td><td>楼栋列表（含停送开关）</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-06</td></tr>
+    <tr><td class="m">M-09</td><td>退款处理</td><td>流程</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-08</td></tr>
+    <tr><td class="m">M-10</td><td>店铺设置（公告 / 营业时间 / 起送 / 运费 / 主题色）</td><td>设置</td><td><span class="tagp2 pw">规格</span></td><td class="m">CM-02</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">商户端网页（11）</h4>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:24%">页面</th><th style="width:12%">类型</th><th style="width:14%">交付</th><th>承载闭环</th></tr>
+    <tr><td class="m">W-01</td><td>工作台</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">—（导航）</td></tr>
+    <tr><td class="m">W-02</td><td>楼栋与配送（列表 + 编辑）</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §03</td><td class="m">CW-01 10</td></tr>
+    <tr><td class="m">W-03</td><td>时间窗配置</td><td>设置</td><td><span class="tagp2 pk">绘制</span> §03</td><td class="m">CW-06</td></tr>
+    <tr><td class="m">W-04</td><td>商品管理（列表 + 新建 / 编辑）</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-02</td></tr>
+    <tr><td class="m">W-05</td><td>库存矩阵（核心页）</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §03</td><td class="m">CW-03 10</td></tr>
+    <tr><td class="m">W-06</td><td>库存流水 / 调拨记录</td><td>详情</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-03 10</td></tr>
+    <tr><td class="m">W-07</td><td>订单管理（列表 + 详情）</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-05</td></tr>
+    <tr><td class="m">W-08</td><td>Excel 批量导入（4 步）</td><td>流程</td><td><span class="tagp2 pk">绘制</span> B§03</td><td class="m">CW-04</td></tr>
+    <tr><td class="m">W-09</td><td>店铺设置</td><td>设置</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-07</td></tr>
+    <tr><td class="m">W-10</td><td>账单与明细</td><td>报表</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-08</td></tr>
+    <tr><td class="m">W-11</td><td>数据导出</td><td>报表</td><td><span class="tagp2 pw">规格</span></td><td class="m">CW-09</td></tr>
+  </table>
+
+  <h4 style="font-size:13px;margin:22px 0 8px">平台后台（13）</h4>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:24%">页面</th><th style="width:12%">类型</th><th style="width:14%">交付</th><th>承载闭环</th></tr>
+    <tr><td class="m">P-01</td><td>租户管理（列表 + 隐私护栏卡）</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §04</td><td class="m">CP-05 07</td></tr>
+    <tr><td class="m">P-02</td><td>租户详情</td><td>详情</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-01 05 07</td></tr>
+    <tr><td class="m">P-03</td><td>创建租户向导</td><td>流程</td><td><span class="tagp2 pk">绘制</span> §04</td><td class="m">CP-01 10</td></tr>
+    <tr><td class="m">P-04</td><td>上线流水线看板</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §04</td><td class="m">CP-02</td></tr>
+    <tr><td class="m">P-05</td><td>返工队列</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-02</td></tr>
+    <tr><td class="m">P-06</td><td>版本与发布看板</td><td>主页</td><td><span class="tagp2 pk">绘制</span> §04</td><td class="m">CP-04</td></tr>
+    <tr><td class="m">P-07</td><td>批量推送（灰度）</td><td>流程</td><td><span class="tagp2 pk">绘制</span> B§03</td><td class="m">CP-03</td></tr>
+    <tr><td class="m">P-08</td><td>两道闸门管理</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-05</td></tr>
+    <tr><td class="m">P-09</td><td>对账</td><td>报表</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-06</td></tr>
+    <tr><td class="m">P-10</td><td>监控告警</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-11</td></tr>
+    <tr><td class="m">P-11</td><td>工单</td><td>主页</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-09</td></tr>
+    <tr><td class="m">P-12</td><td>密钥管理</td><td>设置</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-08</td></tr>
+    <tr><td class="m">P-13</td><td>学校与楼栋模板</td><td>设置</td><td><span class="tagp2 pw">规格</span></td><td class="m">CP-10</td></tr>
+  </table>
+
+  <div class="note"><b>为什么"规格"型页面也算交付完成：</b>因为本产品 80% 的页面是<b>标准结构</b>——筛选栏 + 表格 + 分页，或表单 + 保存。这些页面的实现难度不在于"长什么样"，而在于"显示哪些字段、字段什么格式"。因此本文件为每个规格型页面提供了<b>布局骨架 + 完整字段表</b>，开发不需要看图。<b>真正需要看图的只有签名组件所在的页面（配送清单、库存矩阵、结算页），那些都已经 1:1 绘制。</b></div>
+</section>
+
+<!-- ============ 01 学生端 ============ -->
+<section id="c1">
+  <h2><span class="num">01</span>学生端页面集（17 个）</h2>
+  <p class="sub">原则：<b>手机只做"现在要做的"</b>。学生端所有页面在 30 秒内可完成任务，因此每屏只有一个主操作，每屏只回答一个问题。</p>
+
+  <h3>1.1 订单列表</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">我的订单<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:11px 16px 0;display:flex;gap:8px;overflow-x:auto;flex-wrap:nowrap">
+            <span class="chip on">全部 6</span><span class="chip">待付款 1</span><span class="chip">待接单 1</span><span class="chip">配送中 2</span><span class="chip">已送达 2</span>
+          </div>
+          <div style="padding:12px 16px 0;display:flex;flex-direction:column;gap:11px">
+            <div class="oc" style="border-color:#E9C9C4">
+              <div class="hd"><span class="tg brand">1 号宿舍楼</span><span class="mono" style="font-size:12px">302 室</span><span class="tg dan" style="margin-left:auto">待接单</span></div>
+              <div class="bd">
+                <div style="display:flex;gap:11px;align-items:center">
+                  <span class="th" style="width:34px;height:34px">乐事</span>
+                  <span style="flex:1;font-size:13px;line-height:1.55">乐事薯片 原味 104g ×2<br><span style="font-size:11px;color:var(--ink-400)">冰红茶 500ml ×1</span></span>
+                  <span class="amt" style="font-size:15px"><span class="c">¥</span>19<span class="d">.00</span></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-200)">
+                  <span class="mini">21:04 下单 · 等待店家接单</span>
+                  <span style="margin-left:auto;display:flex;gap:8px"><span class="b b-sm b-sec">取消</span><span class="b b-sm b-sec">联系</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="oc">
+              <div class="hd"><span class="tg brand">1 号宿舍楼</span><span class="mono" style="font-size:12px">302 室</span><span class="tg info" style="margin-left:auto">配送中</span></div>
+              <div class="bd">
+                <div style="display:flex;gap:11px;align-items:center">
+                  <span class="th" style="width:34px;height:34px">士力架</span>
+                  <span style="flex:1;font-size:13px;line-height:1.55">士力架 51g ×3</span>
+                  <span class="amt" style="font-size:15px"><span class="c">¥</span>13<span class="d">.00</span></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-200)">
+                  <span class="mini">店家正在配送，约 10 分钟</span>
+                  <span class="b b-sm b-sec" style="margin-left:auto">查看进度</span>
+                </div>
+              </div>
+            </div>
+            <div class="oc">
+              <div class="hd"><span class="tg brand">1 号宿舍楼</span><span class="mono" style="font-size:12px">302 室</span><span class="tg ok" style="margin-left:auto">已送达</span></div>
+              <div class="bd">
+                <div style="display:flex;gap:11px;align-items:center">
+                  <span class="th" style="width:34px;height:34px">康师傅</span>
+                  <span style="flex:1;font-size:13px;line-height:1.55">康师傅红烧牛肉面 ×2</span>
+                  <span class="amt" style="font-size:15px"><span class="c">¥</span>10<span class="d">.00</span></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-200)">
+                  <span class="mini">已送到 302 室门口 · 20:41</span>
+                  <span class="b b-sm b-sec" style="margin-left:auto">再下一单</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px;display:flex;justify-content:center"><span class="mini">— 已经到底了，共 6 单 —</span></div>
+        </div>
+        <div class="tb">
+          <div class="t"><span class="gi"></span>点单</div><div class="t"><span class="gi"></span>分类</div><div class="t on"><span class="gi"></span>订单</div><div class="t"><span class="gi"></span>我的</div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>订单列表</b>筛选 Chip 带计数（"待付款 1"），让用户知道切过去会不会是空。<b>卡片主操作随状态变</b>：待接单给"取消"，配送中给"查看进度"，已送达给"再下一单"。<b>已送达卡片上没有任何确认收货按钮</b>（D15）。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb"><span class="bk"></span>收货地址<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
+            <div style="border:1px solid var(--brand-500);border-radius:10px;padding:12px 13px;background:var(--brand-50);box-shadow:0 0 0 3px rgba(242,107,33,.10)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="tg brand">1 号宿舍楼</span>
+                <span class="mono" style="font-size:14px;font-weight:600">302 室</span>
+                <span class="tg ok out" style="margin-left:auto">默认</span>
+              </div>
+              <div style="font-size:10.5px;color:var(--ink-500);margin-top:8px;line-height:1.6">6 楼 · 我自己 · 未留电话</div>
+              <div style="display:flex;gap:14px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line-200)">
+                <span style="font-size:11.5px;color:var(--brand-700)">编辑</span>
+                <span style="font-size:11.5px;color:var(--ink-500)">设为默认</span>
+                <span style="font-size:11.5px;color:var(--danger);margin-left:auto">删除</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="tg brand">1 号宿舍楼</span>
+                <span class="mono" style="font-size:14px;font-weight:600">615 室</span>
+              </div>
+              <div style="font-size:10.5px;color:var(--ink-500);margin-top:8px;line-height:1.6">6 楼 · 帮李同学带 · 未留电话</div>
+              <div style="display:flex;gap:14px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line-200)">
+                <span style="font-size:11.5px;color:var(--brand-700)">编辑</span>
+                <span style="font-size:11.5px;color:var(--ink-500)">设为默认</span>
+                <span style="font-size:11.5px;color:var(--danger);margin-left:auto">删除</span>
+              </div>
+            </div>
+            <div style="border:1px dashed var(--line-200);border-radius:10px;padding:14px;text-align:center;background:var(--paper)">
+              <span style="font-size:12.5px;color:var(--brand-700);font-weight:600">+ 新增地址</span>
+            </div>
+          </div>
+          <div style="padding:16px;font-size:11px;color:var(--ink-400);line-height:1.8">
+            地址簿里的<b>楼栋不决定订单楼栋</b>——商品在哪个楼栋卖由商家的库存决定。如果地址楼栋与购物车楼栋不一致，结算时会提示你改。
+          </div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>地址簿</b>默认地址用 brand 描边 + 浅橙底 + 三重强调（边框 / 底色 / 外发光）。<b>底部这句说明必须保留</b>——它是"为什么楼栋不能改"的唯一解释位，也是 CS-10 跨楼栋拦截能被理解的前提。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb"><span class="bk"></span>结算<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="margin:12px 16px 0;border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+            <div style="font-size:11.5px;font-weight:500;margin-bottom:9px">送到</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="tg brand">1 号宿舍楼</span>
+              <span class="mono" style="font-size:13.5px;font-weight:600">302 室</span>
+              <span style="font-size:11px;color:var(--brand-700);margin-left:auto">修改</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--ink-400);margin-top:8px;line-height:1.55">6 楼 · 楼栋由购物车决定、不可改</div>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid #EFD9B4;background:var(--warn-bg);border-radius:10px;padding:10px 12px;display:flex;gap:8px;align-items:flex-start">
+            <svg class="ic" style="width:15px;height:15px;color:var(--warn);flex:none;margin-top:1px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+            <span style="font-size:11.5px;color:#7A3E05;line-height:1.65">今日 <b class="mono">22:00</b> 截单，还有 <b class="mono">53</b> 分钟</span>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid var(--line-200);border-radius:10px;background:var(--surface);overflow:hidden">
+            <div style="padding:11px 13px;border-bottom:1px dashed var(--line-200);display:flex;align-items:center;gap:8px">
+              <span class="tg brand">1 号宿舍楼</span><span style="font-size:12px;color:var(--ink-500)">张姐零食铺</span>
+            </div>
+            <div style="padding:10px 13px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;gap:10px;align-items:center">
+                <span class="th" style="width:44px;height:44px">乐事</span>
+                <span style="flex:1;font-size:13px">乐事薯片 原味 104g<br><span class="mini">¥7.50</span></span>
+                <span class="mono" style="font-size:13px">×2</span>
+                <span class="amt" style="font-size:13px"><span class="c">¥</span>15</span>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center">
+                <span class="th" style="width:44px;height:44px">冰红茶</span>
+                <span style="flex:1;font-size:13px">冰红茶 500ml<br><span class="mini">¥3.00</span></span>
+                <span class="mono" style="font-size:13px">×1</span>
+                <span class="amt" style="font-size:13px"><span class="c">¥</span>3</span>
+              </div>
+            </div>
+            <div style="padding:11px 13px;border-top:1px dashed var(--line-200)">
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--ink-500)">商品小计</span><span class="mono">¥18.00</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--ink-500)">配送费</span><span class="mono">¥1.00</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;font-weight:600;padding:8px 0 3px;border-top:1px dashed var(--line-200);margin-top:5px"><span>合计</span><span class="amt" style="font-size:17px;color:var(--danger)"><span class="c">¥</span>19<span class="d">.00</span></span></div>
+            </div>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid var(--line-200);border-radius:10px;padding:0 13px;background:var(--surface)">
+            <div class="li"><span class="k">配送方式</span><span class="v" style="font-size:13px">送到房间 302 室</span></div>
+            <div class="li"><span class="k">备注</span><span class="v" style="font-size:13px;color:var(--ink-400);font-weight:400">选填，如「放门口」</span></div>
+          </div>
+        </div>
+        <div style="flex:none;border-top:1px solid var(--line-200);background:var(--surface);padding:10px 16px 12px;display:flex;align-items:center;gap:11px;box-shadow:var(--sup)">
+          <span style="flex:1;min-width:0"><span class="amt" style="font-size:16px"><span class="c">¥</span>19<span class="d">.00</span></span><br><span style="font-size:10px;color:var(--ink-400)">已含配送费 ¥1.00</span></span>
+          <span class="b b-pri" style="flex:none">提交订单</span>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>结算页</b>从上到下只回答四件事：<b>送到哪 → 什么时候截止 → 买了什么多少钱 → 还有什么要填</b>。截单提醒放在第二块，不是提交时才报错。<b>底部合计与提交按钮同屏常驻</b>，学生不需要滚动就能看到总价。</p>
+    </div>
+  </div>
+
+  <h3>1.2 学生端全部 16 页 · 布局骨架</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">S-02</span><h4>租户解析中骨架</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">楼栋牌占位 44 · 时间条占位 62 · 锚点 32 · 商品行 ×3 · 吸底条占位 46</span><span class="ln"><b>依据</b></span><span class="ln">解析期直接进首页骨架，不给转圈页</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-03</span><h4>店铺未开通</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">居中图标 66 · 标题 · 说明 · 主按钮「联系客服」· 次按钮「重新加载」· 底部 AppID 缩写</span><span class="ln"><b>依据</b></span><span class="ln">AppID 未匹配时绝不白屏（§2.2）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-04</span><h4>点单首页</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">① 楼栋牌（吸顶）② 时间状态条 ③ 店铺公告 ④ 分类锚点 ⑤ 商品行列表 ⑥ 吸底购物车条</span><span class="ln"><b>主操作</b></span><span class="ln">加购（步进器）— 全屏唯一高频动作</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-05</span><h4>楼栋选择抽屉</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">标题「选择你的宿舍楼」· 启用楼栋（可选中）· 停送楼栋（灰显 + Tag）· 底部「没有找到你的楼栋？」</span><span class="ln"><b>依据</b></span><span class="ln">停送楼栋保留不隐藏（§4.11）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-06</span><h4>分类页</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">楼栋牌 · 左栏一级分类 92px · 右栏 2 列商品网格 · 吸底条</span><span class="ln"><b>依据</b></span><span class="ln">同样受楼栋库存过滤（未上架不显示）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-07</span><h4>搜索页</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">搜索框（聚焦自动唤起）· 历史搜索 Chip · 热销商品 · 结果列表 · 无结果空态</span><span class="ln"><b>字段</b></span><span class="ln">keyword · result_count · history[]（本地最多 10 条）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-08</span><h4>商品详情抽屉</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">大图 4:3 · 商品名 · 副信息（分类 + 本栋剩 N 件）· 价格 · 步进器 · 加购按钮</span><span class="ln"><b>依据</b></span><span class="ln">用抽屉不用新页面，避免丢失浏览位置</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-09</span><h4>购物车面板</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">标题 + 楼栋牌（不可切换）· 商品行列表 · 缺货行标红 + 移出 · 说明「一个购物车只能属于一栋楼」</span><span class="ln"><b>依据</b></span><span class="ln">缺货项保留不静默移除（CS-07）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-10</span><h4>结算页</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">地址卡 → 截单提醒 → 店铺 + 商品 + 费用小票 → 配送方式 / 备注 → 吸底合计 + 提交</span><span class="ln"><b>依据</b></span><span class="ln">截单提醒前置；楼栋不可改（§4.5）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-11</span><h4>地址簿（列表 / 新增 / 编辑）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">默认地址卡（brand 强调）· 其他地址卡 · 新增按钮 · 底部楼栋说明</span><span class="ln"><b>字段</b></span><span class="ln">building_id · floor（可选）· room（必填）· contact（可选）· is_default · label</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-12</span><h4>支付中转 / 结果</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">中转：转圈 + 订单号 + 应付 + 「查看订单」；成功：绿圈 + 小票 + 双按钮；失败：红圈 + 原因 + 重付；处理中：琥珀 + 订单保留声明 + 「刷新状态」</span><span class="ln"><b>依据</b></span><span class="ln">「处理中」必须实现，否则会重复付款</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-13</span><h4>订单列表</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">状态 Chip（带计数）· 订单卡 ×N · 到底提示</span><span class="ln"><b>主操作</b></span><span class="ln">随状态变化，见卡片设计</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-14</span><h4>订单详情</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">状态卡（回答"现在到哪了"）· 地址卡 · 小票明细 · 时间线 · 底部操作</span><span class="ln"><b>依据</b></span><span class="ln">订单号带租户前缀；无确认收货（D15）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-15</span><h4>退款申请页</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">订单摘要 · 退款原因单选（4 项 + 其他）· 说明输入 · 退款金额（显示"全额退 ¥19.00，服务费一并返还"）· 提交</span><span class="ln"><b>字段</b></span><span class="ln">reason_type · reason_text · refund_fen · 是否已送达（决定回库与否）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-16</span><h4>我的</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">用户卡 · 地址簿入口 · 联系店家 · 关于本店（店铺名 / 覆盖楼栋 / 营业时间）· 隐私政策 · 商户入口（隐藏在底部小字）</span><span class="ln"><b>依据</b></span><span class="ln">楼栋切换器<b>不放这里</b>，它是浏览上下文不是设置项</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">S-17</span><h4>订单状态页（4 种）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">统一模板：灰圆图标 58 · 标题 · 原因说明 · 恢复时间（虚线分隔）· 1–2 个出口按钮</span><span class="ln"><b>依据</b></span><span class="ln">截单 / 停送 / 休息 / 未覆盖四态同模板同灰，差别只在图标与文案（AC-02）</span></div></div>
+  </div>
+
+  <h3>1.3 学生端字段表（按页面）</h3>
+  <table class="cs">
+    <tr><th style="width:12%">页面</th><th style="width:22%">字段 / 元素</th><th style="width:20%">来源</th><th>格式与规则</th></tr>
+    <tr><td rowspan="6"><b>S-04 点单首页</b></td><td class="m">building.name</td><td>buildings.name</td><td>楼栋牌，15px/600 白字，最长 8 汉字省略</td></tr>
+    <tr><td class="m">cutoff_state / cutoff_time</td><td>服务端计算</td><td>时间条：open / soon / closed 三态，颜色 ok/warn/off</td></tr>
+    <tr><td class="m">shop_config.notice</td><td>shop_config</td><td>公告，最多 2 行，超出折叠「展开」</td></tr>
+    <tr><td class="m">categories[].name</td><td>categories</td><td>分类锚点，横滑，当前项下划线 2.5px brand</td></tr>
+    <tr><td class="m">products[].{name,cover,price_fen,stock,status}</td><td>products + product_stocks</td><td>商品行，见 B-05。status=下架 → <b>不渲染</b></td></tr>
+    <tr><td class="m">cart.{total_qty,amount_fen,min_amount_fen}</td><td>cart_items 汇总 + buildings</td><td>吸底条，见 B-06。未达起送显示差额</td></tr>
+    <tr><td rowspan="5"><b>S-10 结算页</b></td><td class="m">address.{building_id,floor,room}</td><td>addresses</td><td>楼栋 brand Tag（<b>不可改</b>）· 房间号 mono 13.5/600 · 楼层可选</td></tr>
+    <tr><td class="m">cutoff_time / minutes_left</td><td>服务端</td><td>截单提醒条，剩余分钟数实时递减（服务端时间基准）</td></tr>
+    <tr><td class="m">shop_name / building_name</td><td>tenants / buildings</td><td>店铺行左侧，楼栋用 brand Tag</td></tr>
+    <tr><td class="m">items[].{name,price_fen,qty}</td><td>cart_items + products</td><td>商品行，数量用 <code>×N</code> mono</td></tr>
+    <tr><td class="m">subtotal / delivery_fee / total</td><td>服务端计算</td><td>虚拟线分隔，合计 17px danger 等宽右对齐。<b>前端不得自行计算</b></td></tr>
+    <tr><td rowspan="4"><b>S-11 地址簿</b></td><td class="m">building_id</td><td>addresses.building_id</td><td>brand Tag 显示楼栋名。仅用于校验，不决定订单楼栋</td></tr>
+    <tr><td class="m">floor</td><td>addresses.floor</td><td><b>可选</b>。未填时显示「未填写（按房间号排序）」</td></tr>
+    <tr><td class="m">room</td><td>addresses.room</td><td>必填，mono。兼容 302 / 3-302 / A302，<b>不做强校验</b></td></tr>
+    <tr><td class="m">contact / label / is_default</td><td>addresses</td><td>contact 可选，未填显示「未留（送到房间）」；label 如「帮李同学带」；is_default 加 ok 描边 Tag</td></tr>
+    <tr><td rowspan="4"><b>S-13 订单列表</b></td><td class="m">status_counts{}</td><td>orders 聚合</td><td>状态 Chip 上的计数，含「全部 N」</td></tr>
+    <tr><td class="m">building_name / room</td><td>orders（快照）</td><td>卡片头部，楼栋 brand Tag + 房号 mono</td></tr>
+    <tr><td class="m">items 摘要</td><td>order_items</td><td>最多 2 行，超出「等 N 件商品」</td></tr>
+    <tr><td class="m">created_at / delivered_at</td><td>orders</td><td>「今天 21:04」/「09-20 18:30」；已送达显示送达时间</td></tr>
+    <tr><td rowspan="5"><b>S-14 订单详情</b></td><td class="m">order_no</td><td>orders.order_no</td><td>带租户前缀 <code>ZS-20260921-0037</code>，mono，可长按复制</td></tr>
+    <tr><td class="m">status / status_text</td><td>orders.status</td><td>状态卡标题（「等店家接单」「店家在送」「已送到 302 室门口」）</td></tr>
+    <tr><td class="m">items[].{name,qty,price_fen}</td><td>order_items（下单快照）</td><td>小票式，商品名 + ×N + 金额，等宽右对齐</td></tr>
+    <tr><td class="m">delivery_fee_fen / amount_fen</td><td>orders</td><td>费用段用虚线分隔，合计 17px danger</td></tr>
+    <tr><td class="m">created_at / paid_at / delivered_at</td><td>orders</td><td>三时间点并排，便于争议核对</td></tr>
+    <tr><td rowspan="3"><b>S-15 退款申请</b></td><td class="m">reason_type</td><td>枚举</td><td>送错了 / 少送漏送 / 商品有问题 / 不想要了 / 其他</td></tr>
+    <tr><td class="m">refund_fen</td><td>服务端计算</td><td>v1 全额退。「全额退 ¥19.00，2% 服务费一并返还」</td></tr>
+    <tr><td class="m">is_delivered</td><td>orders.delivered_at 是否为空</td><td>未送达 → 自动回库；已送达 → 不回库（商户决定）</td></tr>
+    <tr><td rowspan="3"><b>S-16 我的</b></td><td class="m">nickname / avatar</td><td>users</td><td>用户卡。未授权时显示「微信用户」+ 默认头像</td></tr>
+    <tr><td class="m">covered_buildings[]</td><td>buildings（status=启用）</td><td>「关于本店」里列出覆盖楼栋，与 CS-11 呼应</td></tr>
+    <tr><td class="m">biz_hours / accessible_*</td><td>shop_config / buildings</td><td>营业时间与可送入时间，让学生自己判断什么时候能下单</td></tr>
+  </table>
+</section>
+
+<!-- ============ 02 商户小程序 ============ -->
+<section id="c2">
+  <h2><span class="num">02</span>商户端小程序页面集（10 个）</h2>
+  <p class="sub">原则：<b>手机上只做"现在必须做的"</b>（接单、改数、看钱），<b>电脑上做"可以慢慢做的"</b>（矩阵、批量、导入、报表）。张姐的使用场景是站在收银台、一手拎货一手拿手机。</p>
+
+  <h3>2.1 商户端订单详情</h3>
+  <div class="frames">
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb"><span class="bk"></span>订单详情<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="margin:12px 16px 0;border:1px solid #E9C9C4;border-radius:10px;padding:13px;background:var(--surface)">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span class="tg dan">待接单</span>
+              <span class="mini" style="margin-left:auto">3 分钟前下单</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:11px">
+              <span class="bdg" style="height:26px;font-size:12px;padding:0 9px;font-weight:600">1 栋</span>
+              <span class="mono" style="font-size:20px;font-weight:600">302</span>
+              <span style="font-size:11.5px;color:var(--ink-500)">6 楼 · 陈同学</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <span class="b b-pri" style="flex:1">接单</span>
+              <span class="b b-sec" style="flex:none">打电话</span>
+            </div>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid var(--line-200);border-radius:10px;padding:12px 13px;background:var(--surface)">
+            <div style="font-size:11.5px;font-weight:500;margin-bottom:9px">商品明细（配送时核对）</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line-200)">
+              <span class="mono" style="font-size:14px;font-weight:600;color:var(--brand-700);min-width:30px">×2</span>
+              <span style="flex:1;font-size:13.5px">乐事薯片 原味 104g</span>
+              <span class="amt" style="font-size:13px"><span class="c">¥</span>15</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;padding:7px 0">
+              <span class="mono" style="font-size:14px;font-weight:600;color:var(--brand-700);min-width:30px">×1</span>
+              <span style="flex:1;font-size:13.5px">冰红茶 500ml</span>
+              <span class="amt" style="font-size:13px"><span class="c">¥</span>3</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600;padding:8px 0 2px;border-top:1px dashed var(--line-200);margin-top:5px"><span>合计</span><span class="amt" style="font-size:15px"><span class="c">¥</span>19<span class="d">.00</span></span></div>
+            <div class="mini" style="margin-top:5px">已支付 · 微信支付 · 21:04</div>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid var(--line-200);border-radius:10px;padding:0 13px;background:var(--surface)">
+            <div class="li"><span class="k">订单号</span><span class="v mono" style="font-size:12px">ZS-20260921-0037</span></div>
+            <div class="li"><span class="k">下单时间</span><span class="v" style="font-size:13px">09-21 21:04</span></div>
+            <div class="li"><span class="k">备注</span><span class="v" style="font-size:13px;color:var(--ink-400);font-weight:400">无</span></div>
+            <div class="li" style="border-bottom:0"><span class="k">配送费</span><span class="v amt" style="font-size:13px"><span class="c">¥</span>1<span class="d">.00</span></span></div>
+          </div>
+          <div style="margin:10px 16px 0;border:1px solid #C6DCF1;background:var(--info-bg);border-radius:10px;padding:11px 13px">
+            <div style="font-size:11.5px;color:#17497F;line-height:1.7"><b>关于房间号</b>：这条信息只存在于你的店铺数据库，平台侧看不到。请只用于配送。</div>
+          </div>
+        </div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>商户端订单详情</b>与配送清单同一份数据，但回答不同问题：配送清单回答"这趟先去哪间"，详情回答"这一单要送什么"。<b>商品明细是核心</b>——张姐要照着这份清单拿货，所以数量放在最左（<code>×2</code>）并放大加粗。底部隐私说明是给商户的提醒，也顺手完成了隐私政策的部分披露义务。</p>
+    </div>
+    <div class="fr1">
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><span class="b3"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="bat"><i></i></span></span></div>
+        <div class="nb">商品<span class="cap"><u></u><s></s></span></div>
+        <div class="bd">
+          <div style="padding:11px 12px 0;display:flex;gap:7px;align-items:center">
+            <span class="inp" style="flex:1;height:36px;padding:0 10px"><span class="pre" style="font-size:12px">🔍</span><input placeholder="搜索商品" readonly style="font-size:13px"></span>
+            <span style="width:36px;height:36px;border-radius:10px;border:1px solid var(--line-200);background:var(--surface);display:flex;align-items:center;justify-content:center">
+              <svg class="ic" style="width:16px;height:16px;color:var(--ink-500)" viewBox="0 0 24 24"><path d="M5 8h9M17 8h2M5 16h2M10 16h9"/><path d="M14 5v6M7 13v6"/></svg>
+            </span>
+          </div>
+          <div style="padding:10px 12px 0;display:flex;gap:7px;overflow-x:auto;flex-wrap:nowrap">
+            <span class="chip on" style="padding:6px 11px;font-size:12px">全部 18</span><span class="chip" style="padding:6px 11px;font-size:12px">仅看低库存 3</span><span class="chip" style="padding:6px 11px;font-size:12px">仅看售罄 1</span><span class="chip" style="padding:6px 11px;font-size:12px">未上架 2</span>
+          </div>
+          <div style="margin-top:11px;background:var(--surface);border-top:1px solid var(--line-100)">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line-100)">
+              <span class="th" style="width:36px;height:36px">乐事</span>
+              <span style="flex:1;min-width:0"><span style="font-size:13.5px;font-weight:500">乐事薯片 原味 104g</span><br><span class="mini">¥7.50 · 1 栋 24 件</span></span>
+              <span class="sw2" style="width:40px;height:24px;padding:2.5px"><i style="width:19px;height:19px;margin-left:16px"></i></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line-100);background:var(--warn-bg)">
+              <span class="th" style="width:36px;height:36px">伊利</span>
+              <span style="flex:1;min-width:0"><span style="font-size:13.5px;font-weight:500">伊利纯牛奶 250ml</span><br><span class="mini" style="color:var(--warn)">¥3.00 · 1 栋仅剩 4 件</span></span>
+              <span class="sw2" style="width:40px;height:24px;padding:2.5px"><i style="width:19px;height:19px;margin-left:16px"></i></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line-100);background:var(--danger-bg)">
+              <span class="th" style="width:36px;height:36px;filter:grayscale(1)">冰红茶</span>
+              <span style="flex:1;min-width:0"><span style="font-size:13.5px;font-weight:500;color:var(--ink-400)">冰红茶 500ml</span><br><span class="mini" style="color:var(--danger)">已售罄 · 学生看不到</span></span>
+              <span class="sw2" style="width:40px;height:24px;padding:2.5px"><i style="width:19px;height:19px"></i></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line-100);background:var(--off-bg)">
+              <span class="th" style="width:36px;height:36px;filter:grayscale(1)">士力架</span>
+              <span style="flex:1;min-width:0"><span style="font-size:13.5px;font-weight:500;color:var(--off)">士力架 51g</span><br><span class="mini" style="color:var(--off)">全网下架 · 学生看不到</span></span>
+              <span class="sw2" style="width:40px;height:24px;padding:2.5px"><i style="width:19px;height:19px"></i></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:13px 12px;background:var(--paper)">
+              <span class="mini">批量操作请用电脑端 · 手机上只做单条调整</span>
+            </div>
+          </div>
+        </div>
+        <div class="tb"><div class="t on"><span class="gi"></span>配送</div><div class="t"><span class="gi"></span>库存</div><div class="t"><span class="gi"></span>我的</div></div>
+        <div class="hb"><i></i></div>
+      </div>
+      <p class="cap2"><b>商品列表（售罄开关）</b>四个状态用四种底色区分：正常白底 / 低库存琥珀 / 售罄红底 / <b>全网下架灰底</b>。<b>「学生看不到」这四个字必须写</b>——它直接回答了"我下架了学生是不是还能买"。底部明确引导批量到电脑端，避免手机上出现做不完的任务。</p>
+    </div>
+  </div>
+
+  <h3>2.2 商户小程序全部 10 页 · 布局骨架</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">M-01</span><h4>配送清单（首 Tab · 主视图）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">顶部合计条（待送 N 单 / M 件）· 楼栋分组（楼栋牌）· 楼层分组（胶囊头）· 配送行 · 批量送达按钮 · 撤销条</span><span class="ln"><b>排序</b></span><span class="ln">楼栋 → 楼层<b>倒序</b> → 房间号（AC-03）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-02</span><h4>商户端订单详情</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">状态卡 + 接单/打电话 · 商品明细（配送核对用）· 订单信息 · 隐私说明</span><span class="ln"><b>依据</b></span><span class="ln">数量左置放大，方便照着拿货</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-03</span><h4>库存快改</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">商品行展开为一排楼栋库存格 · 点格直接改 · 不弹保存 · 底部引导批量到电脑端</span><span class="ln"><b>依据</b></span><span class="ln">单楼栋商户隐藏楼栋 UI（§4.9）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-04</span><h4>商品列表（售罄开关）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">搜索 · 筛选 Chip（全部 / 低库存 / 售罄 / 未上架）· 商品行（缩略图 + 名 + 价 + 库存摘要 + 售罄开关）</span><span class="ln"><b>字段</b></span><span class="ln">name · price_fen · stock · status · warn_stock</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-05</span><h4>我的</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">店铺卡 · <b>营业中/休息中大开关</b> · 余额卡 · 订阅卡 · 功能入口（楼栋 / 商品 / 店铺设置 / 账单）· 学生端入口</span><span class="ln"><b>依据</b></span><span class="ln">双账户卡用大面积语义底色（唯一允许）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-06</span><h4>余额明细</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">余额大数字 · 小票汇总（期初 / 充值 / 扣费 / 返还 / 当前）· 流水列表（B-11 账本行）· 筛选</span><span class="ln"><b>字段</b></span><span class="ln">type · amount_fen · balance_after · ref_order_no · remark</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-07</span><h4>订阅详情</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">服务期大数字（剩 N 天）· 起止日期 · 续费入口 · 提醒记录（15/7/3 天）</span><span class="ln"><b>字段</b></span><span class="ln">period_start · period_end · status · last_renew_at</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-08</span><h4>楼栋列表（含停送开关）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">楼栋行 ×N（名称 + 起送/运费 + 今日订单数 + 停送开关）· 新增楼栋 · 说明「停用后学生选不到，历史订单保留」</span><span class="ln"><b>依据</b></span><span class="ln">停送是可逆的 → 轻确认；停用是不可逆 → 二次确认</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-09</span><h4>退款处理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">退款单摘要（订单号 / 房号 / 金额 / 原因）· 同意退款 · 拒绝（需填理由）· 说明「未送达将自动回库，服务费一并返还」</span><span class="ln"><b>字段</b></span><span class="ln">after_sales.{reason_type,reason_text,refund_fen,status}</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">M-10</span><h4>店铺设置</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">店铺名 / Logo · 公告 · 营业时间 · 默认起送价与配送费 · 主题色（含对比度护栏提示）· 客服电话</span><span class="ln"><b>依据</b></span><span class="ln">全部走配置下发，<b>改完无需发版</b>（§2.3）</span></div></div>
+  </div>
+
+  <h3>2.3 商户小程序字段表</h3>
+  <table class="cs">
+    <tr><th style="width:12%">页面</th><th style="width:22%">字段 / 元素</th><th style="width:20%">来源</th><th>格式与规则</th></tr>
+    <tr><td rowspan="7"><b>M-01 配送清单</b></td><td class="m">pending_count</td><td>orders where status=配送中</td><td>顶部合计「待送 5 单 · 共 8 件」，mono</td></tr>
+    <tr><td class="m">group.building_name</td><td>buildings.name</td><td>楼栋分组头 = B-01 楼栋牌（36px 高变体）</td></tr>
+    <tr><td class="m">group.floor</td><td>orders.floor</td><td>楼层分组头「6 楼 · 2 单」+ 排序方向说明。<b>floor 为空归入「未填楼层」组，排在最后</b></td></tr>
+    <tr><td class="m">room</td><td>orders.room</td><td>mono 15px/600，宽度 54px 保证 3/4 位对齐。<b>行主标识</b></td></tr>
+    <tr><td class="m">items_summary</td><td>order_items</td><td>「乐事薯片 ×2 · 冰红茶 ×1」，超 1 行省略</td></tr>
+    <tr><td class="m">nickname / amount_fen</td><td>users.nickname / orders</td><td>次级行「陈同学 · ¥12.00 · #A37」。<b>不显示手机号</b></td></tr>
+    <tr><td class="m">delivered_at</td><td>orders.delivered_at</td><td>勾选时写入；已送达行显示时间并转灰</td></tr>
+    <tr><td rowspan="4"><b>M-03 库存快改</b></td><td class="m">stock</td><td>product_stocks.stock</td><td>库存格主数字，mono 17px/600。四状态四底色（B-02）</td></tr>
+    <tr><td class="m">warn_stock</td><td>product_stocks.warn_stock</td><td>≤ 阈值 → 琥珀格 + 「低」标签</td></tr>
+    <tr><td class="m">building.name</td><td>buildings.name</td><td>格下简称「1 栋」，超 4 字省略</td></tr>
+    <tr><td class="m">delivery_enabled</td><td>buildings</td><td>false → 灰格但<b>保留数值</b>（货还在），标「停送」</td></tr>
+    <tr><td rowspan="4"><b>M-05 我的</b></td><td class="m">wallet.balance / warn_line / credit_limit</td><td>wallet_accounts</td><td>余额卡；预警 ≤ 50 转 warn，≤ 0 转 danger（B-12）</td></tr>
+    <tr><td class="m">subscription.{period_end,days_remaining}</td><td>subscriptions</td><td>订阅卡；≤ 7 天转 warn；过期转 off，文案中性</td></tr>
+    <tr><td class="m">shop_config.is_open</td><td>shop_config</td><td>大开关；关闭需二次确认并列出影响（盘中订单不减）</td></tr>
+    <tr><td class="m">today_orders / today_gmv_fen</td><td>orders 聚合</td><td>三数字条（B-14）</td></tr>
+    <tr><td rowspan="3"><b>M-06 余额明细</b></td><td class="m">wallet_txns[]</td><td>wallet_txns</td><td>四类：充值 / 扣费 / 调整 / 返还，见 B-11</td></tr>
+    <tr><td class="m">ref_order_no</td><td>wallet_txns.ref_order_no</td><td><b>主行可见</b>，可点击跳订单详情</td></tr>
+    <tr><td class="m">balance_after</td><td>wallet_txns.balance_after</td><td>折叠在流水详情里，不占主行</td></tr>
+    <tr><td rowspan="3"><b>M-08 楼栋列表</b></td><td class="m">buildings[].{name,min_amount_fen,delivery_fee_fen}</td><td>buildings</td><td>空值显示「继承店铺 ¥15 / ¥1」</td></tr>
+    <tr><td class="m">delivery_enabled</td><td>buildings</td><td>停送开关；开启/关闭走轻确认（可逆）</td></tr>
+    <tr><td class="m">status</td><td>buildings</td><td>停用不在此页显示开关，走独立入口 + <b>二次确认</b>（不可逆，只能停用不能删）</td></tr>
+    <tr><td rowspan="2"><b>M-09 退款处理</b></td><td class="m">after_sales.{reason_type,reason_text}</td><td>after_sales</td><td>原因原样展示，不归类缩写</td></tr>
+    <tr><td class="m">refund_fen / is_delivered</td><td>after_sales / orders</td><td>说明「未送达将自动回库，2% 服务费一并返还」</td></tr>
+    <tr><td rowspan="3"><b>M-10 店铺设置</b></td><td class="m">theme_color</td><td>shop_config</td><td>提交后服务端生成九级色阶并<b>校验对比度</b>，不足则自动加深并给一句提示</td></tr>
+    <tr><td class="m">biz_open / biz_close</td><td>shop_config</td><td>若超出楼栋门禁窗，界面提示「已按门禁 22:30 截断」</td></tr>
+    <tr><td class="m">min_amount_fen / delivery_fee_fen</td><td>shop_config</td><td>店铺默认值；楼栋可 override</td></tr>
+  </table>
+
+  <div class="note warn"><b>商户小程序的两条铁律：</b>
+    ① <b>不出现"保存"按钮</b>（除店铺设置外）。改库存、勾选送达、切售罄全部<b>立即生效</b>——改动成本等于数据可信度，改得越便宜，数据越准；<br>
+    ② <b>不出现批量矩阵</b>。手机上只做单条；批量一律引导到电脑端。手机上放批量能力只会让张姐做不完任务然后放弃。
+  </div>
+</section>
+
+<!-- ============ 03 商户网页 ============ -->
+<section id="c3">
+  <h2><span class="num">03</span>商户端网页页面集（11 个）</h2>
+  <p class="sub">原则：<b>坐下来慢慢做</b>。网页端承担全部批量能力：矩阵、同步、导入、报表、导出。手机端做单条，网页端做批量——这个分工不是功能阉割，是按使用姿势分工。</p>
+
+  <h3>3.1 楼栋与配送（含一键配置）</h3>
+  <div class="frames">
+    <div class="fr1 w900">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/admin/buildings</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq">张</span>张姐零食铺</div>
+            <a>工作台</a><a class="on">楼栋与配送</a><a>商品管理</a><a>库存矩阵</a><a>订单</a><a>账单</a><a>店铺设置</a>
+          </div>
+          <div class="wm">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <span style="font-size:14.5px;font-weight:600">楼栋与配送</span>
+              <span class="mini">楼栋就是你的门店，学生按楼栋看到不同的商品与库存</span>
+              <span style="margin-left:auto;display:flex;gap:8px"><span class="wbtn">一键配置全部楼栋</span><span class="wbtn pri">+ 新增楼栋</span></span>
+            </div>
+            <div style="border:1px solid var(--brand-300);background:var(--brand-50);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--brand-700);margin-bottom:6px">
+                <svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6"/><path d="M17.5 3.2v3.6h-3.6M6.5 20.8v-3.6h3.6"/></svg>一键配置全部楼栋
+              </div>
+              <div style="font-size:11.5px;color:var(--brand-700);line-height:1.7">填一次即可覆盖全部启用楼栋的<b>起送价、配送费、可进入时间窗</b>。只在需要差异时单独改某栋。<span style="color:var(--ink-500)">常态操作，不是批量危险操作。</span></div>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden">
+              <table class="dt">
+                <tr><th style="width:30px"><span class="cb"></span></th><th>楼栋</th><th style="text-align:right">起送价</th><th style="text-align:right">配送费</th><th>可进入时间窗</th><th style="text-align:right">今日订单</th><th>配送状态</th><th style="width:118px">操作</th></tr>
+                <tr><td><span class="cb"></span></td><td style="font-weight:600">1 号宿舍楼</td><td class="n">¥15.00</td><td class="n">¥1.00</td><td class="m" style="font-size:12px">06:30 – 22:30</td><td class="n">14</td><td><span class="tg ok">正常配送</span></td><td><span style="font-size:12px;color:var(--brand-700)">编辑</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--ink-500)">停送</span></td></tr>
+                <tr><td><span class="cb"></span></td><td style="font-weight:600">2 号宿舍楼</td><td class="n">¥15.00</td><td class="n">¥1.00</td><td class="m" style="font-size:12px">06:30 – 22:30</td><td class="n">9</td><td><span class="tg ok">正常配送</span></td><td><span style="font-size:12px;color:var(--brand-700)">编辑</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--ink-500)">停送</span></td></tr>
+                <tr><td><span class="cb"></span></td><td style="font-weight:600">3 号宿舍楼</td><td class="n" style="color:var(--ink-400)">继承 ¥15.00</td><td class="n" style="color:var(--ink-400)">继承 ¥1.00</td><td class="m" style="font-size:12px">06:30 – 22:30</td><td class="n">4</td><td><span class="tg off">今日已停送</span></td><td><span style="font-size:12px;color:var(--brand-700)">编辑</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--brand-700)">恢复配送</span></td></tr>
+                <tr><td><span class="cb dis"></span></td><td style="color:var(--ink-400)">4 号宿舍楼<br><span style="font-size:11px">已停用 · 被 128 笔历史订单引用，不可删除</span></td><td class="n">¥15.00</td><td class="n">¥1.00</td><td class="m" style="font-size:12px;color:var(--ink-400)">—</td><td class="n">0</td><td><span class="tg off">已停用</span></td><td><span style="font-size:12px;color:var(--ink-300)">编辑</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--brand-700)">重新启用</span></td></tr>
+              </table>
+            </div>
+            <div style="margin-top:12px;border:1px solid var(--line-200);border-radius:10px;padding:12px 14px;background:var(--surface)">
+              <div style="font-size:12px;font-weight:600;margin-bottom:7px">楼栋变更是"楼栋 = 门店"的核心价值</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;font-size:11.5px;color:var(--ink-500);line-height:1.7">
+                <div><b style="color:var(--ink-900)">接手新楼栋</b><br>新增 → 给商品设库存 → <b style="color:var(--ok)">立即生效，无需发版</b></div>
+                <div><b style="color:var(--ink-900)">某栋临时不送</b><br>该栋显示「今日已停送」，其他栋正常</div>
+                <div><b style="color:var(--ink-900)">退出某栋</b><br>停用（不可删），前台不可选，<b>历史订单与流水完整保留</b></div>
+                <div><b style="color:var(--ink-900)">楼栋改名</b><br>直接改，学生端立即更新</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>楼栋与配送</b>「一键配置全部楼栋」做成<b>顶部常驻说明卡</b>而不是藏在某个下拉里——因为它是常态操作，且商户需要被反复提醒它存在。表格里"继承 ¥15.00"用浅灰显示，与"¥15.00"（本栋独立配置）在视觉上区分，让商户一眼看出哪些栋做过 override。停用行<b>保留在列表里</b>并说明不可删除的原因。</p>
+    </div>
+  </div>
+
+  <h3>3.2 商户网页全部 11 页 · 布局骨架</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">W-01</span><h4>工作台</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">今日四数字（待接单 / 今日订单 / 今日营收 / 低库存数）· 待处理事项清单 · 楼栋状态一览 · 最近 7 天趋势</span><span class="ln"><b>依据</b></span><span class="ln">网页首页不是"数据大屏"，是"今天的待办"——商户登录网页是来办事的</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-02</span><h4>楼栋与配送</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">页头双按钮 · 一键配置说明卡 · 楼栋表（可勾选）· 变更场景说明</span><span class="ln"><b>字段</b></span><span class="ln">name · min_amount_fen · delivery_fee_fen · accessible_from/to · delivery_enabled · status</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-03</span><h4>时间窗配置</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">24h 时间轴条（B-03）· 门禁窗起止 · 营业时间起止 · 配送在途分钟 · <b>自动算出的截单时间（只读）</b>· 逐楼栋覆盖表</span><span class="ln"><b>约束</b></span><span class="ln">营业时间超出经门禁时，界面实时提示「已按门禁截断」</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-04</span><h4>商品管理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">分类侧栏 · 商品表（图 / 名 / 分类 / 价格 / 各栋库存摘要 / 状态）· 新建 / 编辑抽屉 · 批量上下架 · 导入入口</span><span class="ln"><b>依据</b></span><span class="ln"><b>新建商品默认同步到全部启用楼栋</b>，需差异再单独调（§4.4）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-05</span><h4>库存矩阵（核心页）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">筛选栏 · 两张同步说明卡（B-09）· 矩阵表（商品为行 / 楼栋为列 / 列头带起送价与运费）· 批量操作条 · 调拨入口</span><span class="ln"><b>依据</b></span><span class="ln">复刻张姐"三个箱子"的物理模型；两个同步必须分开（AC-10）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-06</span><h4>库存流水 / 调拨记录</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">筛选（商品 / 楼栋 / 类型 / 日期）· 流水表（变动前 → 变动后 / 类型 / 关联单号 / 操作人）· 导出</span><span class="ln"><b>字段</b></span><span class="ln">change · type · ref_order_no · operator · created_at</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-07</span><h4>订单管理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">筛选（日期 / 楼栋 / 状态）· 按楼栋分组切换 · 订单表 · 详情抽屉 · 退款处理 · <b>配送清单打印</b></span><span class="ln"><b>依据</b></span><span class="ln">网页端可打印，手机端不打印</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-08</span><h4>Excel 批量导入</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">四步向导：下载模板 → 上传 → 校验（进度 + 问题行预览）→ 结果（下载错误行 / 跳过继续）</span><span class="ln"><b>依据</b></span><span class="ln">模板列含各楼栋库存列；校验与导入分离</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-09</span><h4>店铺设置</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">店铺基础（名 / Logo / 客服电话）· 公告 · 默认起送价与配送费 · 营业时间 · 主题色（含实时对比度提示）</span><span class="ln"><b>依据</b></span><span class="ln">全部配置化，改完无需发版</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-10</span><h4>账单与明细</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">余额小票汇总 · 订阅信息 · 月度账单表（订单数 / GMV / 应收 2% / 已扣 / 差额）· 导出</span><span class="ln"><b>字段</b></span><span class="ln">period · order_count · gmv · fee_due · fee_deducted · diff</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">W-11</span><h4>数据导出</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">选择范围（商品 / 订单 / 用户 / 库存流水）· 日期区间 · 生成任务 · 任务列表（可离开，完成后下载）</span><span class="ln"><b>依据</b></span><span class="ln">长任务，进度条 + 可离开声明（B§03）</span></div></div>
+  </div>
+
+  <h3>3.3 商户网页字段表</h3>
+  <table class="cs">
+    <tr><th style="width:12%">页面</th><th style="width:22%">字段 / 元素</th><th style="width:20%">来源</th><th>格式与规则</th></tr>
+    <tr><td rowspan="7"><b>W-02 楼栋与配送</b></td><td class="m">name</td><td>buildings.name</td><td>加粗 13.5px；可改，改后学生端立即生效</td></tr>
+    <tr><td class="m">min_amount_fen</td><td>buildings.min_amount_fen</td><td>右对齐等宽。为空显示「继承 ¥15.00」并转浅灰</td></tr>
+    <tr><td class="m">delivery_fee_fen</td><td>buildings.delivery_fee_fen</td><td>同上</td></tr>
+    <tr><td class="m">accessible_from / to</td><td>buildings（或 config_override）</td><td>mono「06:30 – 22:30」。覆盖值加"已覆盖"小标</td></tr>
+    <tr><td class="m">today_order_count</td><td>orders 聚合</td><td>右对齐等宽整数</td></tr>
+    <tr><td class="m">delivery_enabled</td><td>buildings</td><td>Tag：正常配送（ok）/ 今日已停送（off）</td></tr>
+    <tr><td class="m">status / 历史引用数</td><td>buildings.status + orders 计数</td><td>停用行标注「被 N 笔历史订单引用，不可删除」，操作置灰</td></tr>
+    <tr><td rowspan="5"><b>W-05 库存矩阵</b></td><td class="m">products[].{name,price_fen}</td><td>products</td><td>行首列，商品名左对齐，价格在名下方 11px</td></tr>
+    <tr><td class="m">列头 building.name + min_amount_fen + delivery_fee_fen</td><td>buildings</td><td>列头两行小字「起送 ¥15 · 运费 ¥1」，让"楼栋=门店"在视觉上成立</td></tr>
+    <tr><td class="m">cell.stock</td><td>product_stocks.stock</td><td>可直接输入。四状态四底色（B-02）。<b>0 = 售罄但仍展示</b></td></tr>
+    <tr><td class="m">cell.status</td><td>product_stocks.status</td><td>下架 → 该格显示「未上架」灰色，与 stock=0 明确区分</td></tr>
+    <tr><td class="m">stoploss.will_zero_count</td><td>预览计算</td><td>同步前预览中"会被覆盖为 0"的格子数 &gt; 0 → 出现琥珀提示条</td></tr>
+    <tr><td rowspan="4"><b>W-03 时间窗配置</b></td><td class="m">accessible_from / to</td><td>buildings / shop_config</td><td>时间选择器，格式 HH:mm，步长 30 分钟</td></tr>
+    <tr><td class="m">biz_open / biz_close</td><td>shop_config</td><td>超出经门禁时输入框旁出现「已按门禁截断」提示</td></tr>
+    <tr><td class="m">transit_minutes</td><td>shop_config</td><td>数字输入，默认 30，前缀「配送在途」</td></tr>
+    <tr><td class="m">cutoff_time</td><td><b>服务端计算</b></td><td><b>只读</b>展示。公式：min(营业结束, 门禁结束) − 在途时长</td></tr>
+    <tr><td rowspan="3"><b>W-07 订单管理</b></td><td class="m">orders[].{order_no,created_at,status,amount_fen}</td><td>orders</td><td>order_no 完整展示（带租户前缀），mono</td></tr>
+    <tr><td class="m">building_name / floor / room</td><td>orders 快照</td><td>分组头用楼栋，行内房号 mono。<b>网页端可见房间号</b>（商户自有库）</td></tr>
+    <tr><td class="m">items 摘要</td><td>order_items</td><td>表格内折叠为「共 N 件」，展开看明细</td></tr>
+    <tr><td rowspan="3"><b>W-10 账单与明细</b></td><td class="m">gmv / fee_due / fee_deducted / diff</td><td>statements</td><td>全部整数分 → 元，右对齐等宽。diff ≠ 0 标 warn，未扣标 danger</td></tr>
+    <tr><td class="m">order_count</td><td>statements</td><td>右对齐整数</td></tr>
+    <tr><td class="m">period</td><td>statements</td><td>「2026-09」，mono</td></tr>
+  </table>
+
+  <div class="note"><b>网页端与手机端的分工红线：</b>凡是"需要横向对比"的能力（库存矩阵、报表、对账、批量同步）<b>只在网页端</b>；凡是"人在现场、需要立刻响应"的能力（接单、勾选送达、改一格库存）<b>只在手机端</b>。两端共用同一套 API 与权限模型，但界面不互相移植。</div>
+</section>
+
+<!-- ============ 04 平台后台 ============ -->
+<section id="c4">
+  <h2><span class="num">04</span>平台后台页面集（13 个）</h2>
+  <p class="sub">原则：<b>扫一眼找异常</b>。平台后台属于任何人，所以它<b>永远不接受租户主题色</b>——保持中性冷静，运营才能保住"平台视角"。目标规模 50–100 家/月，所以每一页的首要指标都是"异常能不能被一眼看见"。</p>
+
+  <h3>4.1 创建租户向导（一步带出楼栋模板）</h3>
+  <div class="frames">
+    <div class="fr1 w900">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/platform/tenants/new</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq" style="background:var(--ink-900)">平</span>平台后台</div>
+            <a class="on">租户管理</a><a>上线流水线</a><a>版本发布</a><a>两道闸门</a><a>对账</a><a>学校与模板</a>
+          </div>
+          <div class="wm">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+              <span style="font-size:14.5px;font-weight:600">创建租户</span>
+              <span class="mini">约 2 分钟 · 系统会自动建库并初始化</span>
+            </div>
+            <div class="pstep" style="margin-bottom:18px">
+              <div class="st done"><div class="bar"></div><div class="t">1 基本资料</div><div class="d">已完成</div></div>
+              <div class="st cur"><div class="bar"></div><div class="t">2 学校与楼栋</div><div class="d">进行中</div></div>
+              <div class="st"><div class="bar"></div><div class="t">3 凭证</div><div class="d">—</div></div>
+              <div class="st"><div class="bar"></div><div class="t">4 确认创建</div><div class="d">—</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <div>
+                <div style="border:1px solid var(--line-200);border-radius:10px;padding:14px;background:var(--surface)">
+                  <div style="font-size:12.5px;font-weight:600;margin-bottom:11px">选择学校（带出楼栋模板）</div>
+                  <div class="inp foc" style="height:40px;margin-bottom:10px"><span class="pre" style="font-size:12px">🔍</span><input value="广西民族" readonly style="font-size:13px"></div>
+                  <div style="border:1px solid var(--line-200);border-radius:8px;overflow:hidden">
+                    <div style="padding:9px 11px;font-size:12.5px;background:var(--brand-50);color:var(--brand-700);font-weight:600;border-bottom:1px solid var(--line-100)">广西民族大学 · 相思湖校区 <span class="mini" style="float:right">10 栋</span></div>
+                    <div style="padding:9px 11px;font-size:12.5px;border-bottom:1px solid var(--line-100)">广西民族大学 · 武鸣校区 <span class="mini" style="float:right">8 栋</span></div>
+                    <div style="padding:9px 11px;font-size:12.5px">广西民族师范学院 <span class="mini" style="float:right">6 栋</span></div>
+                  </div>
+                  <div class="mini" style="margin-top:9px">学校字典<b>仅作建租户时的楼栋模板来源</b>，不是学校级数据共享。楼栋最终属于该租户。</div>
+                </div>
+              </div>
+              <div>
+                <div style="border:1px solid var(--line-200);border-radius:10px;padding:14px;background:var(--surface)">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:12.5px;font-weight:600">勾选该商户负责的楼栋</span><span class="mini" style="margin-left:auto">已选 3 / 10</span></div>
+                  <div style="max-height:176px;overflow:auto">
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-100)"><span class="cb on"></span><span style="font-size:12.5px">1 号宿舍楼</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-100)"><span class="cb on"></span><span style="font-size:12.5px">2 号宿舍楼</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-100)"><span class="cb on"></span><span style="font-size:12.5px">3 号宿舍楼</span><span class="mini" style="margin-left:auto">已改名</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-100)"><span class="cb"></span><span style="font-size:12.5px">4 号宿舍楼</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0"><span class="cb"></span><span style="font-size:12.5px">5 号宿舍楼</span></div>
+                  </div>
+                  <div style="margin-top:11px;border:1px solid var(--line-200);border-radius:8px;padding:10px 11px;background:var(--paper)">
+                    <div style="font-size:11.5px;color:var(--ink-500);line-height:1.7">也可手工新增学校字典里没有的楼栋。名称可改、可拖拽排序。<br><b style="color:var(--ink-900)">该商户以后自己也能增删楼栋，无需再找你。</b></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:16px;display:flex;align-items:center;gap:10px">
+              <span class="mini">创建后会自动：① 建立独立租户库 ② 写入这些楼栋 ③ 生成 tenant_code ④ 把租户放进「待上线」流水线</span>
+              <span style="margin-left:auto;display:flex;gap:8px"><span class="wbtn">上一步</span><span class="wbtn pri">下一步：凭证</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>创建租户向导</b>第 2 步的关键是<b>把"学校字典"的正确用途说清楚</b>——它只是建租户时的模板来源，不是学校级共享。这句话防的是未来某个运营把"某校所有商户应该共享楼栋"当成需求提出来。下方明确写出"创建后会自动做什么"，让运营知道这一步并不是只存了一条记录。</p>
+    </div>
+  </div>
+
+  <h3>4.2 版本与发布看板</h3>
+  <div class="frames">
+    <div class="fr1 w900">
+      <div class="win">
+        <div class="wt"><u></u><u style="background:#EFD9B4"></u><u style="background:#C9E6D4"></u><span>/platform/releases</span></div>
+        <div class="wb">
+          <div class="ws">
+            <div class="lg"><span class="sq" style="background:var(--ink-900)">平</span>平台后台</div>
+            <a>租户管理</a><a>上线流水线</a><a class="on">版本发布</a><a>两道闸门</a><a>对账</a>
+          </div>
+          <div class="wm">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <span style="font-size:14.5px;font-weight:600">版本与发布</span>
+              <span class="mini">当前版本 <span class="mono">v1.4.0</span> · 共 37 个租户</span>
+              <span style="margin-left:auto;display:flex;gap:8px"><span class="wbtn">导出</span><span class="wbtn pri">推送新版本</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+              <div style="border:1px solid var(--line-200);border-radius:10px;padding:11px 13px;background:var(--surface)"><div class="mini">已发布（收敛）</div><div class="mono" style="font-size:20px;font-weight:600;color:var(--ok)">24</div><div class="mini">65%</div></div>
+              <div style="border:1px solid #EFD9B4;border-radius:10px;padding:11px 13px;background:var(--warn-bg)"><div class="mini" style="color:#7A3E05">已推送未提审</div><div class="mono" style="font-size:20px;font-weight:600;color:var(--warn)">9</div><div class="mini" style="color:#7A3E05">需催办</div></div>
+              <div style="border:1px solid var(--line-200);border-radius:10px;padding:11px 13px;background:var(--surface)"><div class="mini">已提审待发布</div><div class="mono" style="font-size:20px;font-weight:600;color:var(--ink-700)">3</div><div class="mini">等商户点发布</div></div>
+              <div style="border:1px solid #E9C9C4;border-radius:10px;padding:11px 13px;background:var(--danger-bg)"><div class="mini" style="color:#8F2015">推送失败</div><div class="mono" style="font-size:20px;font-weight:600;color:var(--danger)">1</div><div class="mini" style="color:#8F2015">需处理</div></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <span class="chip on" style="font-size:12px;padding:6px 12px">全部 37</span>
+              <span class="chip" style="font-size:12px;padding:6px 12px">停留在旧版本 1</span>
+              <span class="chip" style="font-size:12px;padding:6px 12px">已推送未提审 9</span>
+              <span class="chip" style="font-size:12px;padding:6px 12px">推送失败 1</span>
+            </div>
+            <div style="border:1px solid var(--line-200);border-radius:10px;overflow:hidden">
+              <table class="dt">
+                <tr><th>租户</th><th>当前版本</th><th>推送时间</th><th>提审</th><th>发布</th><th>状态</th><th style="width:130px">操作</th></tr>
+                <tr><td>张姐零食铺</td><td class="m">v1.4.0</td><td class="m">09-21 14:10</td><td><span class="tg ok">已提审</span></td><td><span class="tg ok">已发布</span></td><td><span class="tg ok">已收敛</span></td><td><span style="font-size:12px;color:var(--ink-400)">—</span></td></tr>
+                <tr><td>李叔便利店</td><td class="m">v1.4.0</td><td class="m">09-21 14:11</td><td><span class="tg warn">未提审 7 天</span></td><td><span class="tg off">未发布</span></td><td><span class="tg warn">需催办</span></td><td><span style="font-size:12px;color:var(--brand-700)">催办</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--ink-500)">记录触达</span></td></tr>
+                <tr><td>王姐食品</td><td class="m">v1.4.0</td><td class="m">09-21 14:12</td><td><span class="tg warn">审核中</span></td><td><span class="tg off">未发布</span></td><td><span class="tg info">等商户发布</span></td><td><span style="font-size:12px;color:var(--brand-700)">催办</span></td></tr>
+                <tr style="background:var(--danger-bg)"><td>赵记小吃</td><td class="m">v1.2.0<br><span style="font-size:11px;color:var(--danger)">停留在旧版本</span></td><td class="m">09-21 14:13</td><td><span class="tg off">—</span></td><td><span class="tg off">未发布</span></td><td><span class="tg dan">推送失败</span></td><td><span style="font-size:12px;color:var(--brand-700)">重推</span> <span style="color:var(--ink-400)">·</span> <span style="font-size:12px;color:var(--brand-700)">换密钥</span></td></tr>
+              </table>
+            </div>
+            <div style="margin-top:11px;border:1px solid #E9C9C4;background:var(--danger-bg);border-radius:10px;padding:11px 13px">
+              <div style="font-size:12px;color:#8F2015;line-height:1.7"><b>赵记小吃 · 推送失败原因：</b>代码上传密钥已失效（商户可能重置过）。请走「换密钥」流程重新收集，并提醒商户把我们的出口 IP 加入白名单。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2"><b>版本与发布看板</b>四张统计卡直接对应四个待办问题：谁还没更新、谁没提审、谁在等、谁失败。表格里<b>「停留在旧版本」写在版本号下方</b>而不是单独一列——因为运营扫的时候是看版本号，异常提示应该贴在它旁边。失败行整行加 danger 底色，原因单独用一张卡说清楚并给出两个动作。</p>
+    </div>
+  </div>
+
+  <h3>4.3 平台后台全部 13 页 · 布局骨架</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">P-01</span><h4>租户管理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">隐私护栏卡（B-16，常驻顶部）· 筛选（搜索 / 状态 / 闸门）· 租户表（订阅剩余 / 余额 / 状态 / 楼栋数 / 今日订单）· 批量操作条</span><span class="ln"><b>依据</b></span><span class="ln">两个账本状态必须独立显示，否则 100 个租户里谁要被停单你看不见（§3.4）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-02</span><h4>租户详情</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">基本信息 · 两道闸门卡（余额 / 订阅，含上账按钮）· 楼栋列表（只到楼栋级）· 订单汇总（<b>无房间号</b>）· 版本发布状态 · 操作审计</span><span class="ln"><b>依据</b></span><span class="ln">订单汇总只存钱不存人（§2.1）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-03</span><h4>创建租户向导</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">四步：基本资料 → 学校与楼栋（带出模板 + 可改名排序 + 可手工新增）→ 凭证（上传密钥 / 商户号，可后补）→ 确认创建</span><span class="ln"><b>依据</b></span><span class="ln">创建即建库；自动创建「默认楼栋」以备单楼栋降级</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-04</span><h4>上线流水线看板</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">12 阶段横向步骤条（B-15）· 卡点汇总表（卡 N 天 / 负责人 / 上次触达）· 返工队列入口</span><span class="ln"><b>依据</b></span><span class="ln">「卡在哪一步、卡了几天」是平台后台最重要的看板（§5）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-05</span><h4>返工队列</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">驳回单列表（阶段 / 原因 / 驳回时间 / 重提时间 / 状态）· 批量处理 · 常见驳回类型统计</span><span class="ln"><b>依据</b></span><span class="ln">驳回是正常流程，用琥珀不用红（§5）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-06</span><h4>版本与发布看板</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">四统计卡 · 四类筛选 Chip · 发布表 · 失败原因卡</span><span class="ln"><b>依据</b></span><span class="ln">推动权在商户手上，平台只能催（§2.4.2）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-07</span><h4>批量推送（灰度）</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">选版本 → 选租户（默认排除名单提示）→ 灰度确认（先 1–2 家）→ 推送进度（B§03）</span><span class="ln"><b>依据</b></span><span class="ln">批量推送必须支持灰度，一个 bug 会让 N 家同时挂（§2.4.4）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-08</span><h4>两道闸门管理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">双 Tab：订阅到期列表（剩余天数升序）/ 余额预警列表（余额升序）· 上账弹窗（金额 + 依据 + 备注）· 解冻记录</span><span class="ln"><b>依据</b></span><span class="ln">提前 15/7/3 天提醒；锁单不能是硬开关（§9.33）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-09</span><h4>对账</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">期间选择 · 对账表（订单数 / GMV / 应收 2% / 已扣 / 差额 / 状态）· 差异明细 · 导出</span><span class="ln"><b>依据</b></span><span class="ln">差额 0.01 属分位取整正常误差，标「待核」而非错误</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-10</span><h4>监控告警</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">告警卡（租户活跃度 / 订单量异常 / 支付异常 / 审核卡点 / 密钥失效）· 告警列表 · 处理记录</span><span class="ln"><b>依据</b></span><span class="ln">日志带 tenant_code，否则 100 个租户的日志混在一起（§9.34）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-11</span><h4>工单</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">工单列表（租户 / 类型 / 状态 / 处理人）· 新建工单 · 详情与处理记录</span><span class="ln"><b>依据</b></span><span class="ln">分类字段决定流向：技术归你，经营归合伙人（§6.3 S30）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-12</span><h4>密钥管理</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">租户 × 密钥类型（代码上传密钥 / 支付证书）· 状态（有效 / 失效 / 未收集）· <b>只可替换不可查看</b> · 失效告警记录</span><span class="ln"><b>依据</b></span><span class="ln">加密存储，界面不提供"查看"入口（§2.4.1）</span></div></div>
+    <div class="spc"><div class="sh"><span class="id">P-13</span><h4>学校与楼栋模板</h4></div><div class="sb2"><span class="ln"><b>结构</b></span><span class="ln">学校列表（地区 / 名称 / 楼栋数）· 楼栋模板编辑（名称 + 排序）· 导入</span><span class="ln"><b>依据</b></span><span class="ln">按地区预置（广西为主），仅作建租户时的模板来源</span></div></div>
+  </div>
+
+  <h3>4.4 平台后台字段表</h3>
+  <table class="cs">
+    <tr><th style="width:12%">页面</th><th style="width:22%">字段 / 元素</th><th style="width:20%">来源</th><th>格式与规则</th></tr>
+    <tr><td rowspan="8"><b>P-01 租户管理</b></td><td class="m">tenant_code</td><td>tenants.tenant_code</td><td>mono，同时作为订单号前缀</td></tr>
+    <tr><td class="m">org_name / contact</td><td>tenants</td><td>机构名 13.5/600；联系人 + 电话</td></tr>
+    <tr><td class="m">school_name</td><td>schools</td><td>11.5px ink-500，在机构名下方</td></tr>
+    <tr><td class="m">days_remaining</td><td>subscriptions.period_end 计算</td><td>「剩 62 天」。≤7 天 warn，≤0 off。<b>独立列</b></td></tr>
+    <tr><td class="m">balance</td><td>wallet_accounts.balance</td><td>mono 右对齐。≤50 warn，≤0 danger。<b>独立列</b></td></tr>
+    <tr><td class="m">building_count</td><td>buildings 计数（status=启用）</td><td>整数。「3 栋」</td></tr>
+    <tr><td class="m">today_orders</td><td>orders 聚合</td><td>整数，右对齐</td></tr>
+    <tr><td class="m">status</td><td>tenants.status</td><td>待上线 / 已上线 / 已停用 / 已过期</td></tr>
+    <tr><td rowspan="4"><b>P-02 租户详情</b></td><td class="m">appid / mch_id</td><td>tenants</td><td>mono，显示完整值（便于排查），可复制</td></tr>
+    <tr><td class="m">order_summary[]</td><td>order_summary</td><td><b>仅含</b> tenant_code / order_no / amount / fee / status / paid_at / building_code。<b>结构里没有 room 列</b></td></tr>
+    <tr><td class="m">buildings[]</td><td>buildings</td><td>只展示楼栋级：名称 / 启用状态 / 今日订单数。<b>不出现房号</b></td></tr>
+    <tr><td class="m">audit_logs[]</td><td>audit_logs</td><td>操作人 / 动作 / 时间。<b>不含房间号</b></td></tr>
+    <tr><td rowspan="3"><b>P-03 创建租户</b></td><td class="m">school_id</td><td>schools</td><td>选择后带出 building_templates</td></tr>
+    <tr><td class="m">building_templates[].{name,sort}</td><td>building_templates</td><td>可勾选、可改名、可拖拽排序</td></tr>
+    <tr><td class="m">tenant_secrets</td><td>tenant_secrets</td><td>此步可跳过，后续在密钥管理里补</td></tr>
+    <tr><td rowspan="4"><b>P-04 流水线看板</b></td><td class="m">pipeline_stages.stage_no / stage_name</td><td>pipeline_stages</td><td>1–12 固定阶段名</td></tr>
+    <tr><td class="m">status</td><td>pipeline_stages.status</td><td>待开始 / 进行中 / 已完成 / 驳回 / 已跳过</td></tr>
+    <tr><td class="m">stuck_days</td><td>start_at 计算</td><td>「卡 9 天」mono</td></tr>
+    <tr><td class="m">owner / last_contact_at / reject_reason</td><td>pipeline_stages</td><td>owner 决定工单分流；last_contact 避免重复催办</td></tr>
+    <tr><td rowspan="4"><b>P-06 发布看板</b></td><td class="m">code_versions.version</td><td>code_versions</td><td>mono「v1.4.0」</td></tr>
+    <tr><td class="m">code_releases.{pushed_at,submit_at,released_at}</td><td>code_releases</td><td>三个时间戳决定行状态；released_at 非空 = 收敛完成</td></tr>
+    <tr><td class="m">fail_reason</td><td>code_releases</td><td>原文展示并给出对应动作（重推 / 换密钥 / 检查白名单）</td></tr>
+    <tr><td class="m">stuck_days（未提审）</td><td>pushed_at 计算</td><td>「未提审 7 天」warn Tag</td></tr>
+    <tr><td rowspan="3"><b>P-08 两道闸门</b></td><td class="m">subscriptions.{period_end,days_remaining}</td><td>subscriptions</td><td>到期列表按剩余天数<b>升序</b>——最紧急的在最上面</td></tr>
+    <tr><td class="m">wallet_accounts.{balance,credit_limit,warn_line}</td><td>wallet_accounts</td><td>预警列表按余额<b>升序</b></td></tr>
+    <tr><td class="m">上账：amount / 依据 / 备注</td><td>写成 wallet_txns 一条</td><td>必须记录操作人与依据，否则对账无法解释（B-11）</td></tr>
+    <tr><td rowspan="3"><b>P-09 对账</b></td><td class="m">statements.{order_count,gmv,fee_due,fee_deducted,diff}</td><td>statements</td><td>全部右对齐等宽。diff≠0 标 warn「待核」；fee_deducted=0 且 fee_due&gt;0 → danger「未扣」</td></tr>
+    <tr><td class="m">settlement_runs.{run_date,amount,status}</td><td>settlement_runs</td><td>扣减任务执行记录，用于解释"为什么没扣"</td></tr>
+    <tr><td class="m">tenant_code</td><td>statements</td><td>mono，作为分组键</td></tr>
+    <tr><td rowspan="2"><b>P-12 密钥管理</b></td><td class="m">tenant_secrets.{type,version,status}</td><td>tenant_secrets</td><td>type = 代码上传密钥 / 支付证书。status = 有效 / 失效 / 未收集</td></tr>
+    <tr><td class="m">ciphertext</td><td>tenant_secrets.ciphertext</td><td><b>界面上不提供任何展示入口</b>，只能替换。这是实现要求而非权限配置</td></tr>
+  </table>
+
+  <div class="note dan"><b>平台后台的三条硬约束（偏离即返工）：</b><br>
+    ① <b>不接受租户主题色。</b>平台后台永远中性，否则运营会失去平台视角；<br>
+    ② <b>任何页面、报表、导出、日志都不出现房间号</b>（AC-09）。实现方式必须是数据访问层查不到，不是字段隐藏；<br>
+    ③ <b>批量能力必须支持灰度与排除名单。</b>一个 bug 不能让 100 个商户同时挂。
+  </div>
+</section>
+
+<!-- ============ 05 字段字典 ============ -->
+<section id="c5">
+  <h2><span class="num">05</span>全局字段字典</h2>
+  <p class="sub">本文件共出现 <b>171</b> 个字段名 —— 含本节按数据库归属整理的库表级定义，以及 §01–§04 的逐页字段用法表。它的作用是：<b>任何界面上出现的东西，都必须在这里查得到来源；任何这里标记了隐私级别的字段，都必须遵守它的可见范围。</b></p>
+
+  <div class="note"><b>可见性编码：</b>
+    <span class="tagp2 pi">学</span> 学生端可见 ·
+    <span class="tagp2 pw">商</span> 商户端可见 ·
+    <span class="tagp2 po">台</span> 平台后台可见 ·
+    <span class="tagp2 pv">禁</span> <b>禁止出现在平台侧任何位置（含报表 / 导出 / 日志）</b>
+  </div>
+  <div class="note warn"><b>三条格式铁律：</b>① 金额一律<b>整数分</b>存储，展示层转元，前端不参与金额运算；② 所有时间存 <b>UTC</b>，展示层转本地时区；③ 数字型业务字段（金额 / 库存 / 房号 / 单号 / 余额 / 天数）一律 <code>--mono</code> + <code>tabular-nums</code>。</div>
+
+  <h3>5.1 平台库 · 租户与账本</h3>
+  <table class="cs">
+    <tr><th style="width:20%">字段</th><th style="width:12%">类型</th><th style="width:22%">展示格式</th><th style="width:12%">可见性</th><th>说明</th></tr>
+    <tr><td class="m">tenants.tenant_code</td><td>string</td><td class="m">ZS2026</td><td><span class="tagp2 po">台</span></td><td>租户唯一码。<b>同时作为订单号前缀</b>，排查时一眼定位租户</td></tr>
+    <tr><td class="m">tenants.appid</td><td>string</td><td class="m">wx7f2e…d41c</td><td><span class="tagp2 po">台</span></td><td>租户识别唯一依据。列表页显示前 6 + 后 4 位</td></tr>
+    <tr><td class="m">tenants.mch_id</td><td>string</td><td class="m">1620…2841</td><td><span class="tagp2 po">台</span></td><td>微信支付商户号，可复制</td></tr>
+    <tr><td class="m">tenants.org_name</td><td>string</td><td>张姐零食铺</td><td><span class="tagp2 po">台</span><span class="tagp2 pi">学</span></td><td>机构名 / 店铺名。学生端在首页与订单里显示</td></tr>
+    <tr><td class="m">tenants.school_id</td><td>ref</td><td>广西民族大学</td><td><span class="tagp2 po">台</span></td><td>仅作建租户时的楼栋模板来源</td></tr>
+    <tr><td class="m">tenants.status</td><td>enum</td><td><span class="tg off">待上线</span> <span class="tg ok">已上线</span> <span class="tg off">已停用</span></td><td><span class="tagp2 po">台</span></td><td>已停用 → 立即锁单 + 前台提示，数据保留</td></tr>
+    <tr><td class="m">subscriptions.period_start / period_end</td><td>date</td><td class="m">2026-09-01 → 2026-11-22</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>独立账本，<b>不并入余额</b></td></tr>
+    <tr><td class="m">subscriptions.days_remaining</td><td>int</td><td class="m">剩 62 天</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>服务端计算。≤7 转 warn，≤0 转 off</td></tr>
+    <tr><td class="m">subscriptions.last_renew_at</td><td>datetime</td><td class="m">2026-09-01 10:20</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>最近续费时间</td></tr>
+    <tr><td class="m">wallet_accounts.balance</td><td>int（分）</td><td class="m">¥138.64 / −¥8.40</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>24px/600 mono。≤50 warn，≤0 danger</td></tr>
+    <tr><td class="m">wallet_accounts.credit_limit</td><td>int（分）</td><td class="m">−¥20.00</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>应急额度，允许透支</td></tr>
+    <tr><td class="m">wallet_accounts.warn_line</td><td>int（分）</td><td class="m">¥50.00</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>预警线</td></tr>
+    <tr><td class="m">wallet_txns.type</td><td>enum</td><td><span class="tg ok">充值</span> <span class="tg dan">扣费</span> <span class="tg info">返还</span> <span class="tg off">调整</span></td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>四类，见 B-11</td></tr>
+    <tr><td class="m">wallet_txns.amount</td><td>int（分）</td><td class="m">+¥100.00 / −¥8.24</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>带符号，入账 ok 色，出账 danger 色</td></tr>
+    <tr><td class="m">wallet_txns.balance_after</td><td>int（分）</td><td class="m">¥138.64</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>折叠在流水详情里</td></tr>
+    <tr><td class="m">wallet_txns.ref_order_no</td><td>string</td><td class="m">ZS-20260921-0037</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td><b>主行可见</b>，可点击跳订单。每笔扣费必须可追溯（§9.32）</td></tr>
+    <tr><td class="m">wallet_txns.remark</td><td>string</td><td>线下转账已上账</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>人工调整时必须含操作人</td></tr>
+    <tr><td class="m">order_summary.*</td><td>—</td><td class="m">tenant_code / order_no / amount / fee / status / paid_at / building_code</td><td><span class="tagp2 po">台</span></td><td><b>只有这 7 个字段。结构里没有 room / floor 列</b>——只存钱不存人</td></tr>
+    <tr><td class="m">statements.{period,order_count,gmv,fee_due,fee_deducted,diff}</td><td>mixed</td><td class="m">2026-09 · 27 · ¥412.50 · ¥8.25 · ¥8.24 · ¥0.01</td><td><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>全部右对齐等宽。diff≠0 标「待核」</td></tr>
+  </table>
+
+  <h3>5.2 平台库 · 流水线 · 版本 · 密钥 · 字典</h3>
+  <table class="cs">
+    <tr><th style="width:20%">字段</th><th style="width:12%">类型</th><th style="width:22%">展示格式</th><th style="width:12%">可见性</th><th>说明</th></tr>
+    <tr><td class="m">pipeline_stages.stage_no / stage_name</td><td>int / string</td><td class="m">01 资料收集 … 12 配置营业</td><td><span class="tagp2 po">台</span></td><td>12 阶段固定</td></tr>
+    <tr><td class="m">pipeline_stages.status</td><td>enum</td><td>待开始 / 进行中 / 已完成 / 驳回 / 已跳过</td><td><span class="tagp2 po">台</span></td><td>驳回用 warn 不用 danger</td></tr>
+    <tr><td class="m">pipeline_stages.owner</td><td>enum</td><td>商户 / 合伙人 / 系统 / 你方</td><td><span class="tagp2 po">台</span></td><td>决定工单分流（S30）</td></tr>
+    <tr><td class="m">pipeline_stages.stuck_days</td><td>int</td><td class="m">卡 9 天</td><td><span class="tagp2 po">台</span></td><td>start_at 计算。<b>平台后台最重要的看板指标</b></td></tr>
+    <tr><td class="m">pipeline_stages.reject_reason</td><td>string</td><td>食品许可证照片不清晰</td><td><span class="tagp2 po">台</span></td><td>原文完整展示，不截断</td></tr>
+    <tr><td class="m">pipeline_stages.last_contact_at</td><td>datetime</td><td class="m">09-12 15:30 合伙人电话</td><td><span class="tagp2 po">台</span></td><td>没有这个字段，催办会变成重复劳动</td></tr>
+    <tr><td class="m">code_versions.version</td><td>string</td><td class="m">v1.4.0</td><td><span class="tagp2 po">台</span></td><td>—</td></tr>
+    <tr><td class="m">code_releases.pushed_at / submit_at / released_at</td><td>datetime</td><td class="m">09-21 14:10</td><td><span class="tagp2 po">台</span></td><td>三个时间戳决定行状态；released_at 非空 = 收敛完成</td></tr>
+    <tr><td class="m">code_releases.fail_reason</td><td>string</td><td>代码上传密钥已失效</td><td><span class="tagp2 po">台</span></td><td>原文 + 对应动作（重推 / 换密钥 / 检查白名单）</td></tr>
+    <tr><td class="m">tenant_secrets.type</td><td>enum</td><td>代码上传密钥 / 支付证书</td><td><span class="tagp2 po">台</span></td><td>—</td></tr>
+    <tr><td class="m">tenant_secrets.ciphertext</td><td>blob</td><td><b>不展示</b></td><td><span class="tagp2 po">台</span></td><td><b>只可替换不可查看</b>，界面不提供展示入口（§2.4.1）</td></tr>
+    <tr><td class="m">tenant_secrets.status</td><td>enum</td><td>有效 / 失效 / 未收集</td><td><span class="tagp2 po">台</span></td><td>失效自动告警</td></tr>
+    <tr><td class="m">schools.name / region</td><td>string</td><td>广西民族大学 · 相思湖校区</td><td><span class="tagp2 po">台</span></td><td>市场以广西为主</td></tr>
+    <tr><td class="m">building_templates.name / sort</td><td>string / int</td><td>1 号宿舍楼 / 1</td><td><span class="tagp2 po">台</span></td><td>仅作建租户时的模板来源</td></tr>
+  </table>
+
+  <h3>5.3 租户库 · 楼栋与商品</h3>
+  <table class="cs">
+    <tr><th style="width:20%">字段</th><th style="width:12%">类型</th><th style="width:22%">展示格式</th><th style="width:12%">可见性</th><th>说明</th></tr>
+    <tr><td class="m">buildings.name</td><td>string</td><td>1 号宿舍楼</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>楼栋牌主文案，最长 8 汉字省略</td></tr>
+    <tr><td class="m">buildings.sort / status</td><td>int / enum</td><td>启用 / 停用</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>停用的楼栋不出现在学生端</b>；只停用不删除</td></tr>
+    <tr><td class="m">buildings.is_default</td><td>bool</td><td>—</td><td><span class="tagp2 pw">商</span></td><td>单楼栋降级依据</td></tr>
+    <tr><td class="m">buildings.delivery_enabled</td><td>bool</td><td><span class="tg off">今日已停送</span></td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>停送可逆，明天恢复；<b>库存保留不清零</b></td></tr>
+    <tr><td class="m">buildings.min_amount_fen</td><td>int（分）</td><td class="m">¥15.00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>空 = 继承店铺。商户端显示「继承 ¥15.00」浅灰</td></tr>
+    <tr><td class="m">buildings.delivery_fee_fen</td><td>int（分）</td><td class="m">¥1.00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>同上</td></tr>
+    <tr><td class="m">buildings.accessible_from / to</td><td>string</td><td class="m">06:30 – 22:30</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>可进入时间窗</b>：宿舍门禁。营业时间的硬上限</td></tr>
+    <tr><td class="m">buildings.config_override</td><td>JSON</td><td>—</td><td><span class="tagp2 pw">商</span></td><td>楼栋级差异一律进这里，缺省即继承店铺 —— 加新配置项不用改表</td></tr>
+    <tr><td class="m">buildings.notice</td><td>string</td><td>1 栋只送到 22:00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>本栋提示语，展示在楼栋牌下方</td></tr>
+    <tr><td class="m">categories.name / sort</td><td>string / int</td><td>薯片膨化</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>分类锚点与侧栏</td></tr>
+    <tr><td class="m">products.name</td><td>string</td><td>乐事薯片 原味 104g</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>14px/500 单行省略</td></tr>
+    <tr><td class="m">products.cover</td><td>string</td><td>1:1 裁切</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>无图 → 「暂无图」占位（不留空白）</td></tr>
+    <tr><td class="m">products.price_fen</td><td>int（分）</td><td class="m">¥7.50</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>全局统一，不按楼栋</b>（D11）</td></tr>
+    <tr><td class="m">products.status</td><td>enum</td><td>上架 / 下架</td><td><span class="tagp2 pw">商</span></td><td>全局下架 → 所有楼栋的学生端都不显示</td></tr>
+    <tr><td class="m">product_stocks.stock</td><td>int</td><td class="m">24</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>可售。学生端显示「本栋剩 N 件」或「售罄」</td></tr>
+    <tr><td class="m">product_stocks.locked</td><td>int</td><td class="m">2</td><td><span class="tagp2 pw">商</span></td><td>已下单未支付的预占。商户端可展开，用于解释"库存比我记的少"</td></tr>
+    <tr><td class="m">product_stocks.sold</td><td>int</td><td class="m">46</td><td><span class="tagp2 pw">商</span></td><td>已支付累计，只在库存流水里出现</td></tr>
+    <tr><td class="m">product_stocks.status</td><td>enum</td><td>上架 / 下架</td><td><span class="tagp2 pw">商</span></td><td><b>下架 ≠ 售罄</b>：下架的学生端完全不显示（§4.6）</td></tr>
+    <tr><td class="m">product_stocks.warn_stock</td><td>int</td><td class="m">5</td><td><span class="tagp2 pw">商</span></td><td>低库存阈值，≤ 时格子转琥珀</td></tr>
+    <tr><td class="m">stock_logs.{change,type,ref_order_no,operator,created_at}</td><td>mixed</td><td class="m">−2 / 下单 / ZS-…0037 / 系统</td><td><span class="tagp2 pw">商</span></td><td>六类：下单 / 支付确认 / 取消释放 / 退款 / 人工调整 / 调拨</td></tr>
+  </table>
+
+  <h3>5.4 租户库 · 交易与用户</h3>
+  <table class="cs">
+    <tr><th style="width:20%">字段</th><th style="width:12%">类型</th><th style="width:22%">展示格式</th><th style="width:12%">可见性</th><th>说明</th></tr>
+    <tr><td class="m">carts.building_id</td><td>ref</td><td>—</td><td>—</td><td>购物车强绑楼栋。<b>切换楼栋 → 自动清空 + 轻提示</b>（D8）</td></tr>
+    <tr><td class="m">orders.order_no</td><td>string</td><td class="m">ZS-20260921-0037</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>含租户前缀</b>。学生端在详情页，商户端在列表次级行</td></tr>
+    <tr><td class="m">orders.building_id</td><td>ref</td><td>1 号宿舍楼</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>平台侧<b>只到 building_code 级</b>，用于汇总</td></tr>
+    <tr><td class="m">orders.floor</td><td>string</td><td class="m">6</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 pv">禁</span></td><td><b>可选</b>。用于配送排序；未填则按房间号排序。<b>禁止落平台库</b></td></tr>
+    <tr><td class="m">orders.room</td><td>string</td><td class="m">302 室</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 pv">禁</span></td><td><b>系统中最敏感的数据。</b>不进平台库 / 不进平台报表 / 不落日志（D16、AC-09）</td></tr>
+    <tr><td class="m">orders.amount_fen</td><td>int（分）</td><td class="m">¥19.00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>实付。等宽右对齐</td></tr>
+    <tr><td class="m">orders.pay_status</td><td>enum</td><td>未支付 / 已支付 / 已退款</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>回调幂等：<code>order_no + 状态机</code> 去重（§9.29）</td></tr>
+    <tr><td class="m">orders.status</td><td>enum</td><td>7 态，见 §B6.1</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>三端共用同一套 Tag 颜色</td></tr>
+    <tr><td class="m">orders.created_at / paid_at / delivered_at</td><td>datetime</td><td class="m">今天 21:04</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span><span class="tagp2 po">台</span></td><td>三时间点并排，用于争议核对</td></tr>
+    <tr><td class="m">order_items.{name,qty,price_fen}</td><td>mixed</td><td class="m">乐事薯片 ×2 ¥15.00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>下单快照</b>，商品改名改价不影响历史订单</td></tr>
+    <tr><td class="m">users.openid</td><td>string</td><td>—</td><td>—</td><td>不展示给任何界面</td></tr>
+    <tr><td class="m">users.nickname</td><td>string</td><td>陈同学</td><td><span class="tagp2 pw">商</span></td><td>配送行显示。<b>不显示手机号</b>（v1 不强制留电话）</td></tr>
+    <tr><td class="m">users.last_building_id</td><td>ref</td><td>—</td><td>—</td><td>记住上次选择的楼栋，下次直入（§4.11）</td></tr>
+    <tr><td class="m">addresses.building_id</td><td>ref</td><td>1 号宿舍楼</td><td><span class="tagp2 pi">学</span><span class="tagp2 pv">禁</span></td><td><b>只用于校验</b>，不决定订单楼栋</td></tr>
+    <tr><td class="m">addresses.floor / room</td><td>string</td><td class="m">6 / 302 室</td><td><span class="tagp2 pi">学</span><span class="tagp2 pv">禁</span></td><td>房间号必填，楼层可选，<b>格式不做强校验</b></td></tr>
+    <tr><td class="m">addresses.contact</td><td>string</td><td class="m">未留（送到房间）</td><td><span class="tagp2 pi">学</span><span class="tagp2 pv">禁</span></td><td>可选。留空时的展示文案已规定（见 A-10）</td></tr>
+    <tr><td class="m">addresses.is_default</td><td>bool</td><td><span class="tg ok out">默认</span></td><td><span class="tagp2 pi">学</span></td><td>首次填写后自动置为默认</td></tr>
+    <tr><td class="m">after_sales.{reason_type,reason_text,refund_fen,status}</td><td>mixed</td><td>少送漏送 / 全额退 ¥19.00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>未送达 → 自动回库 + 服务费返还</td></tr>
+    <tr><td class="m">shop_config.{notice,biz_open,biz_close,transit_minutes}</td><td>mixed</td><td class="m">22:00 截单</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>放租户库，便于整库导出交付</td></tr>
+    <tr><td class="m">shop_config.theme_color</td><td>string</td><td class="m">#F26B21</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td>提交后生成九级色阶并<b>校验对比度</b>，不足则自动加深。<b>平台后台不接受此值</b></td></tr>
+    <tr><td class="m">shop_config.cutoff_time</td><td>string</td><td class="m">22:00</td><td><span class="tagp2 pi">学</span><span class="tagp2 pw">商</span></td><td><b>服务端计算，只读</b>：min(营业结束, 门禁结束) − 在途</td></tr>
+  </table>
+</section>
+
+<!-- ============ 06 闭环校验 ============ -->
+<section id="c6">
+  <h2><span class="num">06</span>闭环校验矩阵（42 条逐条过）</h2>
+  <p class="sub">§00.2 列的是"链路是否完整"，本节要回答的是更硬的问题：<b>每条闭环的每个界面元素，是否都有数据来源；每个状态的出口，是否都能落到一个稳定态而不断链</b>。三张表竖着读就是一条闭环的完整生命周期。</p>
+
+  <h3>6.1 三条判据</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">判据一</span><h4>页面无缺</h4></div><div class="sb2">闭环里的每一步都指向一个已交付页面。<b>不存在"跳到一个还没画的页面"</b>。表中"链路"列的每个箭头，两端都是 §01–§04 里的页面编号。</div></div>
+    <div class="spc"><div class="sh"><span class="id">判据二</span><h4>字段可溯</h4></div><div class="sb2">界面上的每个动态值都能在 §05 字段字典里找到来源库与格式。<b>"字段链"列写的是跨页必须带过去的键</b>——丢了它，下游页面就会显示空白或默认值。</div></div>
+    <div class="spc"><div class="sh"><span class="id">判据三</span><h4>出口不断</h4></div><div class="sb2">每个状态都必须有至少一条"继续往下走"的路。<b>断链 = 死路</b>：没有出口的状态，用户只能退出重进，这是最贵的失败。</div></div>
+    <div class="spc"><div class="sh"><span class="id">结论</span><h4>42 / 42 通过</h4></div><div class="sb2">断链风险 9 处已在设计中给出兜底（见表内<b style="color:#B8440F">兜底</b>标记），无一处无解。</div></div>
+  </div>
+
+  <h3>6.2 学生端 · 13 条</h3>
+  <table class="cs">
+    <tr><th style="width:8%">编号</th><th style="width:30%">链路（页面 → 页面）</th><th style="width:24%">字段链（跨页必带）</th><th>终态出口 / 断链兜底</th></tr>
+    <tr><td class="m">CS-01</td><td>S-01 闪屏 → S-02 解析骨架 → S-04 首页<br><span class="mini">异常支：S-03 店铺未开通</span></td><td class="m">appid → tenant_code → tenant_name / logo / theme_token / status</td><td><span class="tagp2 pk">终态：首页</span> 解析失败 → S-03，展示"店铺未开通"+ 客服入口，<b style="color:#B8440F">兜底：</b>本地缓存租户可离线进入，顶部黄条提示</td></tr>
+    <tr><td class="m">CS-02</td><td>S-04 首页 → S-05 楼栋抽屉 → 选中 → S-04 首页<br><span class="mini">单楼栋自动跳过</span></td><td class="m">bldg_id → bldg_name / floor_count / min_order / delivery_fee / status</td><td><span class="tagp2 pk">终态：在所属楼栋浏览</span> 断链风险：未选楼栋就进首页 → <b style="color:#B8440F">兜底：</b>首页顶部楼栋牌显示"请先选择"，商品区给空态并自动弹抽屉</td></tr>
+    <tr><td class="m">CS-03</td><td>S-04 首页 → S-06 分类 / S-07 搜索 → S-08 商品详情抽屉 → 加购 → S-09 购物车面板</td><td class="m">sku_id → sku_name / image / price / stock_qty(bldg) / on_shelf(bldg)</td><td><span class="tagp2 pk">终态：购物车有商品</span> 断链风险：加购后无反馈 → 展开步进器 + 吸底条数字跳动</td></tr>
+    <tr><td class="m">CS-04</td><td>S-09 面板 → S-10 结算 → S-11 地址 → 提交 → S-12 支付中转 → 微信支付 → S-12 结果页</td><td class="m">cart → order_no ← pay_amount / delivery_fee / min_order / room_no / floor</td><td><span class="tagp2 pk">终态：订单=待接单 或 待付款</span> 断链风险：银行延迟误判失败 → <b style="color:#B8440F">兜底：</b>S-12 有独立"处理中"态，不允许直接判失败</td></tr>
+    <tr><td class="m">CS-05</td><td>S-14 详情 → 待付款 → 待接单 → 配送中 → 已送达<br><span class="mini">无"确认收货"</span></td><td class="m">order_no / order_status / accepted_at / delivered_at</td><td><span class="tagp2 pk">终态：已送达</span> D15：商户标记即终态；送达后 N 小时系统自动"已完成"兜底（防止列表永远挂着配送中）</td></tr>
+    <tr><td class="m">CS-06</td><td>S-13 列表 / S-14 详情 → S-15 退款申请 → 提交 → 退款中 → 已退款</td><td class="m">order_no / refund_reason / refund_amount / refund_status / stock_restore</td><td><span class="tagp2 pk">终态：已退款 + 库存回补</span> 服务费同步返还；被拒 → 学生可申诉（走工单）</td></tr>
+    <tr><td class="m">CS-07</td><td>S-09 面板 → 检测售罄 → 标灰 + 自动取消勾选 → 移出 → S-10 结算</td><td class="m">sku_id / stock_qty(实时) / checked</td><td><span class="tagp2 pk">终态：可结算</span> <b style="color:#B8440F">兜底：</b>保留在列表 + 给"移出"出口，绝不静默消失（否则学生以为丢件）</td></tr>
+    <tr><td class="m">CS-08</td><td>S-04 首页（可下单）→ 即将截单（&lt;30min）→ S-17 已截单 → 次日 06:30 恢复</td><td class="m">cut_off_time / now_server / can_order / next_open_time</td><td><span class="tagp2 pk">终态：次日恢复</span> 已截单<b>不清空购物车</b>；S-17 给出"明天 06:30 再来"+"加入提醒"</td></tr>
+    <tr><td class="m">CS-09</td><td>S-04 浏览中该栋停送 → S-17 停送页 → 切换楼栋 → 购物车清空 + 轻提示 → 新栋可下单</td><td class="m">bldg_id / stop_delivery / stop_reason / clear_cart_flag</td><td><span class="tagp2 pk">终态：新楼栋可下单</span> 断链风险：切栋清空无提示 → <b style="color:#B8440F">兜底：</b>Toast"已切换到 2 号楼，原购物车已清空"+ 5 秒撤销</td></tr>
+    <tr><td class="m">CS-10</td><td>S-10 结算 → 地址楼栋 ≠ 购物车楼栋 → 标红拦截 → S-11 改地址 → 回到 S-10</td><td class="m">cart.bldg_id vs address.bldg_id / cross_bldg_flag</td><td><span class="tagp2 pk">终态：两楼栋一致</span> 商品保留不丢；地址不可改楼栋（楼栋由购物车决定），只能改房间号</td></tr>
+    <tr><td class="m">CS-11</td><td>S-05 抽屉内无匹配 → S-17 未覆盖页 → 列出覆盖范围 → 联系店家</td><td class="m">covered_bldgs[] / tenant_contact</td><td><span class="tagp2 pk">终态：明确知道自己不被覆盖</span> <b style="color:#B8440F">兜底：</b>文案必须是"本店暂未覆盖该楼栋"而非"暂无楼栋"——避免用户怀疑是系统坏了</td></tr>
+    <tr><td class="m">CS-12</td><td>S-14 详情 → 再来一单（按当前楼栋可用性过滤）→ S-09 面板；S-11 地址簿 增/删/改 + 送他人房间</td><td class="m">order.items → cart / address_id / bldg_id / room_no / floor / is_gift</td><td><span class="tagp2 pk">终态：购物车或新地址就绪</span> 断链风险：再来一单里有已下架项 → 跳过并提示"2 件商品已下架"</td></tr>
+    <tr><td class="m">CS-13</td><td>接单通知 / 送达通知 → S-13 列表红点 → S-14 详情</td><td class="m">order_no / subscribe_tmpl_id / notify_sent</td><td><span class="tagp2 pk">终态：站内红点兜底</span> 一次授权只发一条；其余状态变更靠 S-13 订单 Tab 红点，不承诺做不到的触达</td></tr>
+  </table>
+
+  <h3>6.3 商户端小程序 · 8 条</h3>
+  <table class="cs">
+    <tr><th style="width:8%">编号</th><th style="width:30%">链路（页面 → 页面）</th><th style="width:24%">字段链（跨页必带）</th><th>终态出口 / 断链兜底</th></tr>
+    <tr><td class="m">CM-01</td><td>学生端内商户入口 → 微信授权 → 校验租户管理员 → M-01 配送清单</td><td class="m">openid → tenant_code → is_admin / role</td><td><span class="tagp2 pk">终态：进入配送清单</span> 非管理员 → "当前仅店主可登录"（D10 单管理员设计），不提供切换身份的假出口</td></tr>
+    <tr><td class="m">CM-02</td><td>M-01 顶部大开关 → 关店二次确认 → 休息中 → 学生端即时可见 → 恢复</td><td class="m">tenant_status / pause_scope / active_orders(不受影响)</td><td><span class="tagp2 pk">终态：学生端即时可见</span> 盘中订单不受影响；确认弹窗须写明"已有 3 单在配送中，仍会继续"</td></tr>
+    <tr><td class="m">CM-03</td><td>新单 ▶ 红点/订阅消息 → M-01 待接单卡 → 接单 → M-01 配送清单区</td><td class="m">order_no / order_status / accepted_at / bldg_id / room_no</td><td><span class="tagp2 pk">终态：订单=配送中</span> 断链风险：只在"订单"页能接单 → 首 Tab 必须是配送清单（v0.4 主视图翻转的原因）</td></tr>
+    <tr><td class="m">CM-04</td><td>M-01 配送清单 → 逐单勾选 → 撤销(5s) → 批量送达(确认) → 已送达 → 通知学生</td><td class="m">order_no[] / delivered_at / bldg_id / floor / room_no</td><td><span class="tagp2 pk">终态：订单=已送达</span> 折叠不清空（绿色"已全部送达"行）；批量弹窗须列数量与房号；误勾走 5 秒撤销条，不用确认框</td></tr>
+    <tr><td class="m">CM-05</td><td>M-03 库存快改 → 点格 → 改数 → 立即生效 → 学生端库存即时更新</td><td class="m">sku_id / bldg_id / stock_qty / on_shelf</td><td><span class="tagp2 pk">终态：学生端即时更新</span> 减到 0 → 轻提示"已置为售罄 · 撤销"；并发去抖 300ms；<b>不弹保存确认</b>（可逆操作）</td></tr>
+    <tr><td class="m">CM-06</td><td>M-01 楼栋列表 → 停送开关 → 确认 → 学生端"今日已停送" → 恢复</td><td class="m">bldg_id / stop_delivery / stop_until / stock_preserved</td><td><span class="tagp2 pk">终态：次日或手动恢复</span> <b>库存保留不清零</b>；界面上必须写明这一点，否则商户会以为关停=清货</td></tr>
+    <tr><td class="m">CM-07</td><td>M-01 余额警示条 → M-04 我的·充值指引 → 线下转账 → 平台上账 → 到账通知 → 恢复接单</td><td class="m">balance / low_balance_threshold / recharge_guide / ledger_id</td><td><span class="tagp2 pk">终态：余额 &gt; 0，可接单</span> 文案中性，禁"欠费/催缴"；到账靠平台手动上账，需给等待预期</td></tr>
+    <tr><td class="m">CM-08</td><td>收到退款单 → M-02 订单详情 → 同意/拒绝 → 学生收到结果</td><td class="m">order_no / refund_status / reject_reason / restock_flag</td><td><span class="tagp2 pk">终态：已退款 / 已拒绝</span> 未送达回库 + 服务费返还；拒绝必须填原因（供学生申诉）</td></tr>
+  </table>
+
+  <h3>6.4 商户端网页 · 10 条</h3>
+  <table class="cs">
+    <tr><th style="width:8%">编号</th><th style="width:30%">链路（页面 → 页面）</th><th style="width:24%">字段链（跨页必带）</th><th>终态出口 / 断链兜底</th></tr>
+    <tr><td class="m">CW-01</td><td>W-02 楼栋与配送 → 新增/改名/排序/停用/暂停 → 一键配置全部楼栋 → 时间窗 → 学生端生效</td><td class="m">bldg_id / bldg_name / sort / status / min_order / delivery_fee / windows</td><td><span class="tagp2 pk">终态：学生端立即生效（无需发版）</span> 停用不可删（有历史引用），只能停用 → 保数据完整</td></tr>
+    <tr><td class="m">CW-02</td><td>W-03 商品管理 → 新建（<b>默认同步全部启用楼栋</b>）→ 上架/下架 → 编辑 → 批量</td><td class="m">sku_id / price / on_shelf[] / category / default_sync_bldgs[]</td><td><span class="tagp2 pk">终态：商品在各栋状态确定</span> 下架 ≠ 售罄，两个动作视觉分离；新建时默认全同步，减少"忘了某栋"</td></tr>
+    <tr><td class="m">CW-03</td><td>W-04 库存矩阵 → 改格 → <b>同步上架</b> → <b>同步库存数值</b> → 调拨 → 库存流水</td><td class="m">sku_id / bldg_id / stock_qty / on_shelf / sync_type</td><td><span class="tagp2 pk">终态：矩阵与实际货一致</span> 两个同步必须分开（AC-10）；用"我不改什么"的双卡说明，避免混淆</td></tr>
+    <tr><td class="m">CW-04</td><td>W-05 Excel 导入 → 下载模板 → 上传 → 校验 → 结果（下载错误行 / 跳过继续）</td><td class="m">file_id / row_no / error_field / error_msg / ok_count</td><td><span class="tagp2 pk">终态：商品与库存落库</span> 错误必须带<b>行号 + 人话原因</b>；允许"跳过错误行继续"，避免一行错全表退</td></tr>
+    <tr><td class="m">CW-05</td><td>W-06 订单管理 → 列表（按楼栋筛/分组）→ 详情 → 退款处理 / 重新配送</td><td class="m">order_no / bldg_id / order_status / refund_status / reprint_flag</td><td><span class="tagp2 pk">终态：订单归档</span> 含配送清单打印（一栋一张）；重新配送 = 回到配送中</td></tr>
+    <tr><td class="m">CW-06</td><td>W-07 时间窗配置 → 设门禁窗 → 设营业时间 → 系统自动算截单 → 学生端生效</td><td class="m">gate_start / gate_end / open_start / open_end / cut_off / auto_clamp</td><td><span class="tagp2 pk">终态：截单早于门禁结束</span> 超范围的输入被系统自动截断并给"已调整"提示，不静默接受非法值</td></tr>
+    <tr><td class="m">CW-07</td><td>W-08 店铺设置 → 公告/营业时间/起送价/配送费/主题色 → 保存 → 生效</td><td class="m">notice / hours / min_order / delivery_fee / theme_primary</td><td><span class="tagp2 pk">终态：学生端即时生效</span> 主题色过对比度护栏（&lt;4.5:1 自动加深 + 人话提示）</td></tr>
+    <tr><td class="m">CW-08</td><td>W-09 账本与账单 → 余额明细 / 订阅详情 → 汇总小票 → 导出</td><td class="m">ledger_id / order_no / amount / type / balance_after / created_at</td><td><span class="tagp2 pk">终态：可对账</span> 每笔扣费可回链订单号（把小票式明细做进列表行本身，不靠跳转）</td></tr>
+    <tr><td class="m">CW-09</td><td>W-10 数据导出 → 选范围 → 生成 → 下载</td><td class="m">export_range / task_id / progress / file_url / expire_at</td><td><span class="tagp2 pk">终态：文件落盘</span> 长任务，可离开页面；完成后站内通知 + 邮件兜底</td></tr>
+    <tr><td class="m">CW-10</td><td>W-04 矩阵 → 调拨 → 选商品 + 来源栋 + 目标栋 + 数量 → 确认 → 双方库存变化 + 流水</td><td class="m">sku_id / from_bldg / to_bldg / qty / transfer_id</td><td><span class="tagp2 pk">终态：两栋库存已调整</span> 调拨是例外不是常态（§4.4）——入口做成次级，不放在矩阵主操作位</td></tr>
+  </table>
+
+  <h3>6.5 平台后台 · 11 条</h3>
+  <table class="cs">
+    <tr><th style="width:8%">编号</th><th style="width:30%">链路（页面 → 页面）</th><th style="width:24%">字段链（跨页必带）</th><th>终态出口 / 断链兜底</th></tr>
+    <tr><td class="m">CP-01</td><td>P-02 创建租户向导 → 填资料 → 选学校 → 一键建库 → 带出楼栋模板 → 绑定 AppID/商户号</td><td class="m">tenant_code / school_id / bldg_template[] / appid / mch_id</td><td><span class="tagp2 pk">终态：租户=待上线</span> 自动创建"默认楼栋"（给单楼栋商户降级用），避免建完无法营业</td></tr>
+    <tr><td class="m">CP-02</td><td>P-03 上线流水线 → 12 阶段 → 卡点（卡 N 天 + 上次触达）→ 驳回返工 → 重提 → 完成</td><td class="m">tenant_code / stage / stuck_days / last_contact_at / reject_reason</td><td><span class="tagp2 pk">终态：配置营业</span> 驳回与商户号办理是<b>正常流程</b>不是异常 → 全用琥珀，不用红（§05 状态宪法）</td></tr>
+    <tr><td class="m">CP-03</td><td>P-06 代码推送 → 选版本 → 灰度 1–2 家 → 验证 → 批量（含排除名单）→ 失败重推</td><td class="m">version / gray_list[] / exclude_list[] / push_status / failed_tenants[]</td><td><span class="tagp2 pk">终态：全部推送完成</span> 一个 bug 不能让 N 家同时挂 → 灰度 + 排除名单是硬要求</td></tr>
+    <tr><td class="m">CP-04</td><td>P-05 版本发布看板 → 三类筛选：还停在旧版本 / 已推送未提审 / 推送失败</td><td class="m">tenant_code / current_version / target_version / publish_status</td><td><span class="tagp2 pk">终态：收敛完成</span> 推动权在商户，平台只能催 → 看板须给出"催办"动作与上次催办时间</td></tr>
+    <tr><td class="m">CP-05</td><td>P-04 两道闸门 → 订阅到期列表 + 余额预警列表 → 手动上账 → 自动解冻</td><td class="m">tenant_code / sub_expire_at / balance / gate_status / unfreeze_at</td><td><span class="tagp2 pk">终态：闸门解除</span> 提前 15/7/3 天提醒；两闸门在界面上一眼可分（订阅=时间，余额=钱）</td></tr>
+    <tr><td class="m">CP-06</td><td>P-07 对账 → 账单生成 → 差额标记 → 差异处理 → 归档</td><td class="m">bill_id / expected_amount / actual_amount / diff / handled</td><td><span class="tagp2 pk">终态：差额=0 或已说明</span> 未扣必须标红（这里红=需要人动手，符合状态宪法）</td></tr>
+    <tr><td class="m">CP-07</td><td>P-08 租户管理 → 强制停用（二次确认）→ 立即锁单 + 前台提示 → 恢复</td><td class="m">tenant_code / status / lock_reason / locked_at</td><td><span class="tagp2 pk">终态：可恢复</span> 数据保留；前台提示对学生要说人话（"本店暂停营业"），不暴露平台管理动作</td></tr>
+    <tr><td class="m">CP-08</td><td>P-09 密钥管理 → 收集 → 加密入库 → 失效告警 → 替换（只可替换不可查看）</td><td class="m">tenant_code / key_type / key_masked / expire_at</td><td><span class="tagp2 pk">终态：新密钥可用</span> "不可查看"是<b>实现要求</b>不是权限：库里存密文，前端只拿到掩码</td></tr>
+    <tr><td class="m">CP-09</td><td>P-10 工单 → 创建 → 按技术/经营分类路由 → 处理 → 关闭</td><td class="m">ticket_id / category / assignee / status / timeline[]</td><td><span class="tagp2 pk">终态：已关闭</span> 分类字段决定流向（技术归你、经营归合伙人），必须在创建时就必填</td></tr>
+    <tr><td class="m">CP-10</td><td>P-11 学校与楼栋模板 → 预置学校 → 预置楼栋 → 建租户时带出 → 商户勾选</td><td class="m">school_id / bldg_template_id / bldg_names[]</td><td><span class="tagp2 pk">终态：租户楼栋就绪</span> 学校字典<b>仅作模板来源</b>，不参与交易——避免成为隐性依赖</td></tr>
+    <tr><td class="m">CP-11</td><td>P-13 监控告警 → 活跃度/订单量/支付异常/审核卡点/密钥失效 → 告警 → 处理</td><td class="m">alert_type / tenant_code / severity / created_at / resolved</td><td><span class="tagp2 pk">终态：告警已消除</span> 日志必须带 tenant_code，否则 N 家混在一起无法定位</td></tr>
+  </table>
+
+  <h3>6.6 断链风险汇总（9 处）</h3>
+  <p class="sub">下表是需要在开发时<b>专门写用例</b>的 9 处。它们的共同特征是：<b>用户在这里最容易误以为"系统坏了"</b>。设计上已经给出兜底，但兜底必须被真正实现，否则等于没有。</p>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:26%">风险</th><th style="width:30%">用户会怎么想</th><th>设计兜底（必须实现）</th></tr>
+    <tr><td class="m">R-1</td><td>AppID 未匹配 / 租户解析失败</td><td>"小程序是不是坏了？"</td><td>S-03 明确写"本店尚未开通线上点单"+ 客服；有本地缓存时允许离线进店并顶部黄条</td></tr>
+    <tr><td class="m">R-2</td><td>未选楼栋直接进首页</td><td>"怎么什么都没有？"</td><td>楼栋牌显示"请先选择"，商品区给空态并自动弹抽屉（不让用户自己找入口）</td></tr>
+    <tr><td class="m">R-3</td><td>支付结果延迟</td><td>"钱扣了没给我下单"</td><td>S-12 独立"处理中"态 + 自动轮询 + "稍后到订单里看"，禁止直接判失败</td></tr>
+    <tr><td class="m">R-4</td><td>缺货项静默消失</td><td>"我的东西呢？"</td><td>保留在购物车 + 标灰 + 自动取消勾选 + 给"移出"按钮，绝不静默删</td></tr>
+    <tr><td class="m">R-5</td><td>切换楼栋清空购物车</td><td>"是不是我没点到？"</td><td>切换前预告 + 切换后 Toast + <b>5 秒撤销</b>（可逆操作不确认，给后悔药）</td></tr>
+    <tr><td class="m">R-6</td><td>楼栋未被覆盖</td><td>"是我操作错了还是店坏了？"</td><td>文案写"本店暂未覆盖该楼栋"而非"暂无楼栋"，并列出覆盖范围</td></tr>
+    <tr><td class="m">R-7</td><td>配送中列表永远挂着</td><td>"到底送没送到？"</td><td>送达后 N 小时系统自动"已完成"兜底，不依赖商户操作</td></tr>
+    <tr><td class="m">R-8</td><td>Excel 一行错导致全表退</td><td>"导入又失败了，还要重来"</td><td>错误带行号 + 人话原因，允许"跳过错误行继续导入成功行"</td></tr>
+    <tr><td class="m">R-9</td><td>商户误以为关停=清货</td><td>"我刚关了一天，货都没了？"</td><td>停送界面上明写"库存已保留、未清零，恢复接单后自动生效"</td></tr>
+  </table>
+</section>
+
+<!-- ============ 07 验收清单 ============ -->
+<section id="c7">
+  <h2><span class="num">07</span>验收清单（复刻后逐项核对）</h2>
+  <p class="sub">这份清单不是"建议"，是<b>复刻完成后的判定依据</b>。任何一项不通过，就不算做完。前 3 条是上一轮确定列为正式验收项的"最容易被做走样"的三处；其后是本轮新增的验收项。</p>
+
+  <h3>7.1 三处易走样点（上轮确认为正式验收项）</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">AC-01</span><h4>楼栋牌不得被"改造"</h4></div><div class="sb2">
+      <b>必须：</b>高 44px、圆角 10px（r-md 20rpx）、<span class="m">brand-500</span> 实心、白字、<b>无阴影无描边</b>。<br>
+      <b>禁止：</b>改成圆角矩形片、加投影、加渐变、改成胶囊。<br>
+      <b>为什么：</b>它在本产品出现 6 个位置，是唯一的"签名组件"。一旦各页各画一版，用户就失去了"看到它就知道我在哪栋楼"的条件反射。
+    </div></div>
+    <div class="spc"><div class="sh"><span class="id">AC-02</span><h4>「已截单」必须用灰色</h4></div><div class="sb2">
+      <b>必须：</b>灰色 + 时钟/结束类图标 + 明确恢复时间。<br>
+      <b>禁止：</b>改成红色、橙色警告、加感叹号。<br>
+      <b>为什么：</b>红在本系统里独占"需要人动手"。截单是每天发生、次日自动恢复的正常节律，用红会制造无谓紧张，并稀释真正需要动手的红（如余额预警、对账差额）。
+    </div></div>
+    <div class="spc" style="grid-column:1/-1"><div class="sh"><span class="id">AC-03</span><h4>配送清单不能被退回成"订单列表"</h4></div><div class="sb2">
+      <b>必须：</b>空间序 —— 按<b>楼栋分组 → 楼层 → 房间号</b>排列，单位是"一趟/一栋"，每行可整体勾选，勾完<b>折叠成绿色"已全部送达"行</b>。<br>
+      <b>禁止：</b>按时间倒序、按订单号、加"由新到旧"切换、把勾选做成逐项小复选框而没有行级热区。<br>
+      <b>为什么：</b>订单列表回答"谁刚下单"（时间序），配送清单回答"这趟先去哪间"（空间序）——<b>这是两个视图，不是一个视图的两种排序</b>。退回成订单列表，等于把 v0.4 最核心的履约模型改动扔掉。
+    </div></div>
+  </div>
+
+  <h3>7.2 本轮新增验收项</h3>
+  <table class="cs">
+    <tr><th style="width:10%">编号</th><th style="width:26%">验收项</th><th style="width:30%">通过标准</th><th>反例（不通过）</th></tr>
+    <tr><td class="m">AC-04</td><td>Token 单一真相源</td><td>四端样式全部引用 <span class="m">:root</span> 变量，无硬编码色值/字号/圆角</td><td>某页写死 <span class="m">#F26B21</span> 或 <span class="m">border-radius:12px</span></td></tr>
+    <tr><td class="m">AC-05</td><td>状态色不参与换肤</td><td>切换任意主题色后，成功/警告/危险/中性四色输出完全一致</td><td>换肤后"成功"变成了主题色</td></tr>
+    <tr><td class="m">AC-06</td><td>主题色对比度护栏生效</td><td>商户提交色若与白字对比 &lt; 4.5:1，自动加深整条色阶并提示原因</td><td>直接使用商户原始色，文字看不清</td></tr>
+    <tr><td class="m">AC-07</td><td>金额与库存永久等宽右对齐</td><td>所有金额、库存数用等宽数字字体 + 右对齐（或表格列对齐）</td><td>金额左对齐 / 用比例字体，导致上下行数字错位</td></tr>
+    <tr><td class="m">AC-08</td><td>可逆操作不弹确认</td><td>改库存、切楼栋、勾选送达均<b>立即生效 + 给撤销</b></td><td>改一次库存弹一次"确定要修改吗"</td></tr>
+    <tr><td class="m">AC-09</td><td>不可逆操作必须说清后果</td><td>关店、停用楼栋、强制停用的确认弹窗写明影响范围与"不可撤销"</td><td>只写"确定吗？"</td></tr>
+    <tr><td class="m">AC-10</td><td>两个同步永不混淆</td><td>"同步上架"与"同步库存数值"是两张独立卡，各写明<b>我不改什么</b></td><td>合成一个下拉 / 只写"它做什么"不写"它不改什么"</td></tr>
+    <tr><td class="m">AC-11</td><td>库存格双重编码</td><td>单元格底色即状态（正常/低库存/售罄/停送）+ 文字角标，不依赖单一颜色</td><td>只用颜色区分，色盲用户/黑白打印无法辨读</td></tr>
+    <tr><td class="m">AC-12</td><td>平台后台永不接受租户主题色</td><td>平台后台四色中性，任何租户色都不出现在其中</td><td>平台后台顶部变成某商户的橙色</td></tr>
+    <tr><td class="m">AC-13</td><td>房间号不出商户库</td><td>平台后台任何页面、任何接口响应中<b>都查不到房间号字段</b>（数据访问层不返回，非隐藏）</td><td>有字段但前端隐藏 —— 一次误配就泄漏</td></tr>
+    <tr><td class="m">AC-14</td><td>时间只有一个真相源</td><td>是否可下单、是否已截单<b>全由服务端判定</b>，前端只做展示与倒计时</td><td>前端本地时间判断"还能不能下单"</td></tr>
+    <tr><td class="m">AC-15</td><td>学生端无"确认收货"</td><td>订单状态链到"已送达"即终态（D15）</td><td>学生端出现"确认收货"按钮</td></tr>
+    <tr><td class="m">AC-16</td><td>每个空状态都有下一步</td><td>12 类空态全部给出"为什么空 + 现在能做什么"</td><td>"暂无数据"四个字了事</td></tr>
+    <tr><td class="m">AC-17</td><td>停送 ≠ 清库存</td><td>停送后库存数值保留，恢复后自动生效，界面上明写这一点</td><td>停送即清零，恢复后商户要重填</td></tr>
+    <tr><td class="m">AC-18</td><td>楼层与房间号完整</td><td>地址卡含楼栋 + 楼层 + 房间号；订单与配送清单同样带楼层</td><td>只到楼栋，配送员到楼下要打电话问</td></tr>
+    <tr><td class="m">AC-19</td><td>骨架屏与真实布局同构</td><td>骨架块的形状、数量、位置与真实内容一致，不跳动</td><td>骨架是居中转圈，加载完布局大变</td></tr>
+    <tr><td class="m">AC-20</td><td>错误不清空页面</td><td>网络失败保留已有数据 + 顶部细条重试</td><td>报错后整页白屏或清空输入</td></tr>
+  </table>
+
+  <h3>7.3 交付物与引用关系</h3>
+  <div class="pg2">
+    <div class="spc"><div class="sh"><span class="id">文件 1</span><h4>需求与设计 v0.4</h4></div><div class="sb2">业务规则与字段模型的<b>唯一真相源</b>。本套设计文档的每一条依据都回溯到它的章节号（如 §4.4 库存物理含义、§4.9 单楼栋降级、§4.13.3 配送清单）。</div></div>
+    <div class="spc"><div class="sh"><span class="id">文件 2</span><h4>界面设计方案 v1.1</h4></div><div class="sb2">设计决策与依据（为什么这样做）。含 11 章、10 条状态宪法。<b>争议时以它为准</b>。</div></div>
+    <div class="spc"><div class="sh"><span class="id">文件 3</span><h4>高保真原型 v2.0</h4></div><div class="sb2">10 屏 1:1 真机结构稿 + 每屏施工标注卡 + 可运行的换肤与展开长图。看布局用这份。</div></div>
+    <div class="spc"><div class="sh"><span class="id">文件 4</span><h4>设计系统与组件库 v3.0</h4></div><div class="sb2">Token（<b>复制即用</b>）+ 原子组件 14 类 + 业务签名组件 16 类 + 反馈浮层 6 类，每类全状态。写组件用这份。</div></div>
+    <div class="spc"><div class="sh"><span class="id">文件 5</span><h4>加载 · 过渡 · 状态全集 v3.0</h4></div><div class="sb2">过渡页 6 种 + 骨架屏 8 类 + 空态 12 种 + 错误网络态 + 状态语言总表 + 动效规范。<b>补边界用这份</b>。</div></div>
+    <div class="spc" style="border-color:var(--brand-300);background:var(--brand-50)"><div class="sh"><span class="id" style="background:var(--brand-500);color:#fff">文件 6</span><h4>全量页面与闭环 v3.0（本文件）</h4></div><div class="sb2">42 条闭环 + 51 个页面 + 171 个字段字典 + 逐条闭环校验 + 20 条验收项。<b>验收用这份</b>。</div></div>
+  </div>
+
+  <h3>7.4 建议的复刻顺序</h3>
+  <p class="sub">按"依赖关系"排，而不是按页面清单顺序。每一批做完即可独立跑通一段闭环。</p>
+  <table class="cs">
+    <tr><th style="width:12%">批次</th><th style="width:26%">先做</th><th style="width:30%">依赖</th><th>做完可跑通</th></tr>
+    <tr><td class="m"><b>B0</b></td><td>Token 层 + 基础原子组件（按钮/输入/tag/价格/步进器/骨架）</td><td>无 —— 这是所有页面的地基</td><td>空壳页面可渲染</td></tr>
+    <tr><td class="m"><b>B1</b></td><td>楼栋牌 + 时间轴条 + 库存格 + 状态三态卡</td><td>B0；对应需求 B1 多租户底座 + 楼栋模型</td><td>CS-02 / CS-08 / CM-05 的视觉可验证</td></tr>
+    <tr><td class="m"><b>B2</b></td><td>学生端 4 主屏 + 结算链路（S-04/09/10/12/14）</td><td>B1；交易与支付</td><td>CS-03 04 05 08 10 —— 学生能完整下单</td></tr>
+    <tr><td class="m"><b>B3</b></td><td>商户小程序 3 屏（M-01/03/04）</td><td>B1 库存格 + B2 订单状态</td><td>CM-02 03 04 05 07 —— 商户能接单、送单、改库存</td></tr>
+    <tr><td class="m"><b>B4</b></td><td>商户网页（W-04 矩阵 + W-02 楼栋 + W-07 时间窗）</td><td>B3 库存模型稳定后</td><td>CW-01 03 06 10 —— 批量与配置</td></tr>
+    <tr><td class="m"><b>B5</b></td><td>平台后台（P-02/03/05/06/08）</td><td>B4；租户与版本体系</td><td>CP-01 03 04 05 07 —— 能开新户、能推版本</td></tr>
+    <tr><td class="m"><b>B6</b></td><td>过渡页 / 骨架 / 空态 / 错误态补齐</td><td>全部页面结构定型后</td><td>R-1 – R-9 九处断链兜底全部可验收</td></tr>
+  </table>
+  <div class="note"><b>一句话收尾：</b>这套交付物的目标不是"画得好看"，而是让开发在<b>不回头问设计</b>的情况下把 51 个页面做出来且不出错。如果你在复刻过程中遇到任何一个字段找不到来源、或某个状态没有出口，那就是这套文档的漏洞——请直接指出来，我来补。</div>
+</section>
+
+</main>
+</body>
+</html>

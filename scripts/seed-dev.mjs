@@ -19,42 +19,16 @@
  *
  * 前置：服务端已在运行（`npm run dev:server` 或 `npm run start:server`）。
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
-
-const ROOT = path.resolve(import.meta.dirname, '..');
-const SERVER_DIR = path.join(ROOT, 'apps', 'server');
+import { brief, ensureTenant, envOf, makeCaller, ok, ownerToken, requireHealthy } from './lib/seed-http.mjs';
 
 /* ------------------------------------------------------------ 参数与环境 */
 
-function argOf(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-/** 极简 .env 解析：只认 KEY=VALUE，够用且不引依赖（与服务端 core/env.ts 同策略） */
-function readEnvFile(file) {
-  const out = {};
-  if (!fs.existsSync(file)) return out;
-  for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const i = line.indexOf('=');
-    if (i < 0) continue;
-    const k = line.slice(0, i).trim();
-    let v = line.slice(i + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-    out[k] = v;
-  }
-  return out;
-}
-
-const fileEnv = { ...readEnvFile(path.join(SERVER_DIR, '.env')), ...readEnvFile(path.join(SERVER_DIR, '.env.local')) };
-const PORT = process.env.PORT ?? fileEnv.PORT ?? '3000';
-const BASE = (argOf('server') ?? process.env.SNACK_SERVER ?? `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
-const APPID = argOf('appid') ?? process.env.WECHAT_APPID ?? fileEnv.WECHAT_APPID ?? '';
-const ADMIN_KEY = process.env.PLATFORM_ADMIN_KEY ?? fileEnv.PLATFORM_ADMIN_KEY ?? '';
+// 环境解析、请求封装、建租户、取令牌都在 lib/seed-http.mjs 里，与 seed-demo.mjs 共用。
+// 共用不是为了少写几行：两份实现必然各自漂移，改了 .env 解析或令牌头只改到一处，
+// 另一个会在某个深夜 quietly 失败。
+const { base: BASE, appid: APPID, adminKey: ADMIN_KEY } = envOf();
+const call = makeCaller(BASE);
 
 if (!APPID) {
   console.error(
@@ -66,101 +40,20 @@ if (!APPID) {
   process.exit(1);
 }
 
-/* ---------------------------------------------------------------- 请求封装 */
-
-async function call(method, url, { body, token, platformKey } = {}) {
-  const header = { 'content-type': 'application/json' };
-  if (token) header.authorization = `Bearer ${token}`;
-  if (platformKey) header['x-platform-key'] = platformKey;
-
-  let res;
-  try {
-    res = await fetch(`${BASE}${url}`, { method, headers: header, body: body ? JSON.stringify(body) : undefined });
-  } catch (e) {
-    console.error(
-      `[seed] 连不上 ${BASE} —— ${e.message}\n` +
-        '  服务端没起。先在另一个终端跑：npm run dev:server（或在仓库根跑 npm run start:server）',
-    );
-    process.exit(1);
-  }
-  const text = await res.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { raw: text };
-  }
-  return { status: res.status, body: data };
-}
-
-const ok = (r) => r.status >= 200 && r.status < 300;
-
 /* ------------------------------------------------------------------ 主流程 */
 
 async function main() {
   console.log(`[seed] 目标服务：${BASE}`);
   console.log(`[seed] 目标 AppID：${APPID}`);
 
-  // 0. 健康检查：先确认后端真的活着，而不是等到第 3 步才发现
-  const health = await call('GET', '/api/health');
-  if (!ok(health)) {
-    console.error(`[seed] 健康检查失败（HTTP ${health.status}）：${JSON.stringify(health.body)}`);
-    process.exit(1);
-  }
-  console.log(`[seed] 服务健康：dbMode=${health.body.dbMode} nodeEnv=${health.body.nodeEnv}`);
-
-  // 1. 已有租户就直接复用（这个脚本要能反复跑）
-  let tenantCode = '';
-  const existing = await call('POST', '/api/tenant/resolve', { body: { appid: APPID } });
-  if (ok(existing)) {
-    tenantCode = existing.body.tenantCode;
-    console.log(`[seed] 该 AppID 已开店：${tenantCode}（${existing.body.shopName}），跳过建租户`);
-  } else {
-    if (existing.body?.error?.code !== 'TENANT_NOT_FOUND') {
-      console.error(`[seed] resolve 异常（HTTP ${existing.status}）：${JSON.stringify(existing.body)}`);
-      process.exit(1);
-    }
-    if (!ADMIN_KEY) {
-      console.error(
-        '[seed] 建租户需要平台密钥。在 apps/server/.env.local 里配 PLATFORM_ADMIN_KEY，\n' +
-          '       或用环境变量：PLATFORM_ADMIN_KEY=xxx node scripts/seed-dev.mjs',
-      );
-      process.exit(1);
-    }
-
-    const created = await call('POST', '/api/platform/tenants', {
-      platformKey: ADMIN_KEY,
-      body: {
-        shopName: '张姐零食铺（本机开发）',
-        orgName: '本机开发用经营主体',
-        appid: APPID,
-        schoolId: 1,
-        region: '广西',
-        contactName: '张姐',
-        contactPhone: '13800000000',
-      },
-    });
-    if (!ok(created)) {
-      console.error(`[seed] 建租户失败（HTTP ${created.status}）：${JSON.stringify(created.body)}`);
-      process.exit(1);
-    }
-    tenantCode = created.body.tenant.tenantCode;
-    console.log(
-      `[seed] 已建租户 ${tenantCode}（${created.body.tenant.shopName}），` +
-        `带出 ${created.body.buildings.length} 个楼栋`,
-    );
-  }
-
-  // 2. 取店主令牌：目录域（建商品 / 铺库存）全部要求店主身份
-  const ot = await call('POST', '/api/platform/merchant/token', { platformKey: ADMIN_KEY, body: { tenantCode } });
-  if (!ok(ot)) {
-    console.error(
-      `[seed] 取店主令牌失败（HTTP ${ot.status}）：${JSON.stringify(ot.body)}\n` +
-        '  多半是 PLATFORM_ADMIN_KEY 与服务端不一致。',
-    );
-    process.exit(1);
-  }
-  const owner = ot.body.token;
+  // 0. 健康检查 + 1. 复用/新建租户 + 2. 取店主令牌 —— 三步都在 lib 里（与 seed-demo 同一套）
+  await requireHealthy(call);
+  const { tenantCode } = await ensureTenant(call, {
+    appid: APPID,
+    adminKey: ADMIN_KEY,
+    shopName: '张姐零食铺（本机开发）',
+  });
+  const owner = await ownerToken(call, { tenantCode, adminKey: ADMIN_KEY });
 
   // 3. 楼栋清单（建商品时要指定上架到哪些楼栋）
   const resolved = await call('POST', '/api/tenant/resolve', { body: { appid: APPID } });

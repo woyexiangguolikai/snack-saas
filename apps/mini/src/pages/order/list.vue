@@ -5,12 +5,12 @@ import SnNavBar from '../../components/SnNavBar.vue';
 import SnSegmented from '../../components/SnSegmented.vue';
 import SnOrderCard from '../../components/SnOrderCard.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
-import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnPageSkeleton from '../../components/SnPageSkeleton.vue';
 import { useThemeStore } from '../../stores/theme';
 import { useSessionStore } from '../../stores/session';
 import { useAsync } from '../../composables/useAsync';
 import { api, type StudentOrder } from '../../utils/api';
-import { toast, confirm, switchTab, TAB } from '../../utils/ui';
+import { toast, confirm, switchTab, TAB, pullRefresh } from '../../utils/ui';
 
 /**
  * S-13 订单列表。
@@ -54,12 +54,25 @@ async function boot(): Promise<void> {
   await list.load();
 }
 
-onPullDownRefresh(async () => {
-  await list.reload();
-  uni.stopPullDownRefresh();
-});
+onPullDownRefresh(() =>
+  pullRefresh(async () => {
+    await list.reload();
+  }),
+);
 
 const counts = computed(() => list.data.value?.counts ?? { ongoing: 0, done: 0, all: 0 });
+
+/** 另一个分栏里有几单 —— 空态文案与"直达"按钮都靠它，不另取一次数据 */
+const otherCount = computed(() => (seg.value === 'ongoing' ? counts.value.done : counts.value.ongoing));
+const otherLabel = computed(() => (seg.value === 'ongoing' ? '已结束' : '进行中'));
+const emptyDesc = computed(() => {
+  if (otherCount.value > 0) {
+    return `${otherLabel.value}里还有 ${otherCount.value} 单，不在这一栏。`;
+  }
+  return seg.value === 'ongoing'
+    ? '下单后还没走完流程的订单会出现在这里，方便你随时看进度。'
+    : '已送达、已取消、已退款的订单会归档到这里。';
+});
 
 const segOptions = computed(() => [
   { value: 'ongoing', label: '进行中', count: counts.value.ongoing },
@@ -125,35 +138,32 @@ function gotoHome(): void {
         @primary="boot"
       />
 
-      <view v-else-if="list.phase.value === 'loading'" class="ol__skel">
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="text" />
-      </view>
+      <!-- 骨架：筛选 Chip 30 + 订单卡 ×3 + 底部（卡片内虚线分隔也要画，
+           漏掉它会有一像素位移） -->
+      <SnPageSkeleton v-else-if="list.phase.value === 'loading'" preset="orderList" :rows="3" />
 
       <SnStateBlock
         v-else-if="list.phase.value === 'error'"
         tone="danger"
         glyph="!"
         title="订单没加载出来"
-        :desc="list.error.value?.message ?? '网络不太顺，请稍后重试'"
+        :desc="list.error.value?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次'"
         primary-text="重新加载"
         @primary="list.reload()"
       />
 
-      <!-- 空态：按分栏给不同的话。说"没有订单"太笼统，学生会怀疑是不是丢了 -->
+      <!-- 空态（12 类之②③）：分两种情形，**必须区分开** ——
+           ① 从未下过单：给"去点单"邀请。
+           ② 订单在别的分栏里：必须说出来 + 给直达按钮。
+              只写"暂无订单"会让学生以为订单丢了，然后来问客服。 -->
       <SnStateBlock
         v-else-if="list.isEmpty.value"
         tone="off"
         glyph="—"
-        :title="seg === 'ongoing' ? '没有进行中的订单' : '还没有已结束的订单'"
-        :desc="
-          seg === 'ongoing'
-            ? '下单后还没走完流程的订单会出现在这里，方便你随时看进度。'
-            : '已送达、已取消、已退款的订单会归档到这里。'
-        "
-        primary-text="去点单"
-        @primary="gotoHome"
+        :title="otherCount > 0 ? `这一栏暂时是空的` : seg === 'ongoing' ? '还没有进行中的订单' : '还没有已结束的订单'"
+        :desc="emptyDesc"
+        :primary-text="otherCount > 0 ? `查看${otherLabel}（${otherCount}）` : '去点单'"
+        @primary="otherCount > 0 ? (seg = seg === 'ongoing' ? 'done' : 'ongoing') : gotoHome()"
       />
 
       <view v-else class="ol__list">

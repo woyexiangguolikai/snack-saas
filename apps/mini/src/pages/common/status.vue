@@ -6,6 +6,7 @@ import SnStateBlock from '../../components/SnStateBlock.vue';
 import { useThemeStore } from '../../stores/theme';
 import { api, type OrderGate } from '../../utils/api';
 import { goBackOrHome } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-17 订单状态页（四种「今天不行」共用一张模板）。
@@ -43,13 +44,20 @@ onLoad(async (query) => {
   }
 });
 
+/**
+ * 「今天不行」里有两种状态属于**商户的经营状况**（服务期 / 余额）。
+ * 学生不欠我们钱、也替店家充不了值，所以这两种在页面上必须长得一模一样 ——
+ * 只要能区分，"这家店快开不下去了"就会顺着界面传出去（§6.5 / AC-13）。
+ */
+const MERCHANT_STATE_DESC = '店铺暂时没有营业，商品可以浏览；开店后这里就能下单。';
+
 /** 「那我现在能做什么」—— 按状态给可行动的补充说明 */
 const FALLBACK_DESC: Record<string, string> = {
   closed: '已经过了今天的接单时间。可以先把想买的加进购物车，明天开单后一键下单。',
   building_paused: '本栋今天暂停配送，其他楼栋正常。如果换楼栋下单，收货地址也要一起换。',
   resting: '店铺还没开始今天的接单。可以先把想买的加进购物车，开单后直接结算。',
-  subscription_expired: '店铺服务期已结束，商品可以浏览但暂不可下单。可以联系店家了解情况。',
-  balance_blocked: '店铺暂时不承接新订单，可以联系店家。已下单的订单不受影响。',
+  subscription_expired: MERCHANT_STATE_DESC,
+  balance_blocked: MERCHANT_STATE_DESC,
 };
 
 const desc = computed(() => {
@@ -58,10 +66,18 @@ const desc = computed(() => {
   return FALLBACK_DESC[s] ?? '当前不可下单，稍后再试。';
 });
 
-const nextText = computed(() => {
-  const n = gate.value?.nextOpenAt;
-  return n ? `下次可下单时间 ${n}` : '';
+/**
+ * 标题与恢复时间都由服务端给（AC-02 / §6.4）：
+ *   三种"今天做不了"共用同一张模板，差别**只在标题与恢复时间**。
+ *   前端拿 message 当标题、自己拼"下次可下单时间"，就等于把同一件事
+ *   在四端各写一遍 —— 迟早有一端忘了改。
+ */
+const title = computed(() => {
+  if (errText.value) return '暂时无法确认能否下单';
+  return gate.value?.title || '当前不可下单';
 });
+
+const nextText = computed(() => gate.value?.recovery ?? '');
 
 async function retry(): Promise<void> {
   loading.value = true;
@@ -86,11 +102,13 @@ function back(): void {
 <template>
   <view class="st" :style="theme.themeStyle">
     <SnNavBar title="下单状态" @back="back" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
     <view class="st__body">
       <SnStateBlock
         tone="off"
         glyph="—"
-        :title="loading ? '正在确认…' : (gate?.message ?? '当前不可下单')"
+        :title="loading ? '正在确认…' : title"
         :desc="loading ? '' : desc"
         :next-text="nextText"
         primary-text="去逛逛别家商品"

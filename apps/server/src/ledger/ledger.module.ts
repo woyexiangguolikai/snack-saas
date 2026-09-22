@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { LedgerService } from './ledger.service';
-import { JobsService } from './jobs.service';
 import { PlatformLedgerController } from './platform-ledger.controller';
 import { TenantBillingController } from './tenant-billing.controller';
 
@@ -12,10 +11,14 @@ import { TenantBillingController } from './tenant-billing.controller';
  * 谁在动钱一眼能从依赖图上看出来。
  *
  * 它依赖 CoreModule 提供的 REPO_FACTORY 与 AppLogger（全局模块），所以这里不 import 任何东西。
+ *
+ * 定时任务（JobsService）在 S7 搬到了 `src/jobs/`：那个调度器要同时看账本域与订单域，
+ * 留在本模块会与 OrderModule 形成循环依赖。**账本模块因此变得只有"钱"**，
+ * 这反而更接近它原本的边界。
  */
 @Module({
   controllers: [PlatformLedgerController, TenantBillingController],
-  providers: [LedgerService, JobsService],
-  exports: [LedgerService, JobsService],
+  providers: [LedgerService],
+  exports: [LedgerService],
 })
 export class LedgerModule {}

@@ -52,6 +52,15 @@ export interface OrderGate {
     | 'balance_blocked';
   tone: 'ok' | 'warn' | 'off' | 'danger';
   message: string;
+  /**
+   * 短标题与恢复时间由服务端拆开下发（AC-02 / §6.4）。
+   *
+   * 为什么不让前端从 message 里截：三种"今天做不了"必须**共用同一张模板**，
+   * 差别只在标题与恢复时间。如果只有一整句话，前端就只能拿它当标题，
+   * 于是恢复时间被埋进句子、三张牌长得各不相同 —— 一致性当场失效。
+   */
+  title: string;
+  recovery: string | null;
   nextOpenAt: string | null;
   minutesToCutoff: number | null;
 }

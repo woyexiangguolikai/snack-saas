@@ -1,9 +1,23 @@
 import type {
   AddressRecord,
+  AlertRecord,
+  AppVersionRecord,
+  AuditRecord,
   BuildingRecord,
   BuildingTemplateRecord,
   CategoryRecord,
+  JobKind,
+  JobRunRecord,
   OrderItemRecord,
+  OrphanPayRecord,
+  PushBatchRecord,
+  PushTargetRecord,
+  SecretKind,
+  TenantSecretRecord,
+  TenantStatus,
+  TicketCategory,
+  TicketRecord,
+  TicketStatus,
   OrderRecord,
   OrderStatus,
   OrderSummaryRecord,
@@ -27,6 +41,34 @@ import type {
 } from './types';
 
 // 统一出口：调用方从 './core/repository' 一处即可拿到仓储接口与所需的领域类型
+export type {
+  AlertKind,
+  AlertLevel,
+  AlertRecord,
+  AppVersionRecord,
+  AppVersionStatus,
+  AuditRecord,
+  JobKind,
+  JobRunRecord,
+  OrphanPayRecord,
+  PaidIntegrityReport,
+  PipelineOwner,
+  PipelineStageView,
+  PlatformReconcileBoard,
+  PushBatchRecord,
+  PushTargetRecord,
+  ReworkItem,
+  SecretKind,
+  SecretStatus,
+  TenantPipelineView,
+  TenantReconcileRow,
+  TenantSecretRecord,
+  TenantStatus,
+  TicketCategory,
+  TicketRecord,
+  TicketStatus,
+} from './types';
+
 export type {
   AddressRecord,
   BuildingRecord,
@@ -102,6 +144,21 @@ export interface PlatformRepo {
   listPipeline(tenantCode: string): Promise<PipelineStageRecord[]>;
   appendAudit(entry: { tenantCode?: string | null; actor: string; action: string; target?: string | null; detail?: string | null }): Promise<void>;
 
+  /**
+   * 网页端登录码（一次性、5 分钟有效）。
+   *
+   * 为什么要它：商户网页后台不能用平台密钥登录（那是平台自己的钥匙，给出去等于
+   * 把整个平台交出去），也不能靠"输 openid"（谁都能猜别人的 openid）。
+   * 登录码把"谁有权登录"这件事交回给**已经登录的店主本人**：
+   * 他在小程序里生成一个码，在电脑上敲进去 —— 与微信网页版扫码是同一个思路。
+   *
+   * 落库而不是放进程内存：多台 API 实例时，进程内存的码在另一台上查不到，
+   * 表现为"码明明是对的，电脑端就是登不进去"。
+   */
+  issueWebLoginCode(tenantCode: string, code: string, ttlSeconds: number): Promise<{ expiresAt: string }>;
+  /** 消费成功返回 true；码不存在 / 已过期 / 已用过 返回 false（不区分哪一种，避免枚举） */
+  consumeWebLoginCode(tenantCode: string, code: string): Promise<boolean>;
+
   /* -------------------------------------------------------------- 双账本 */
 
   /**
@@ -151,6 +208,97 @@ export interface PlatformRepo {
   getStatement(tenantCode: string, period: string): Promise<StatementRecord | null>;
   upsertStatement(tenantCode: string, period: string, patch: Partial<StatementRecord>): Promise<StatementRecord>;
   listStatements(tenantCode: string): Promise<StatementRecord[]>;
+
+  /* ------------------------------------------------- 上线流水线（S6） */
+
+  /**
+   * 改一个阶段的状态。
+   * 用 `stageNo` 定位而不是 id —— 阶段是**固定 12 个**，业务语义上就该按序号找；
+   * 让调用方持有内部 id 只会多一层"这个 id 是哪个阶段"的翻译。
+   */
+  updatePipelineStage(
+    tenantCode: string,
+    stageNo: number,
+    patch: Partial<Pick<PipelineStageRecord, 'status' | 'owner' | 'startAt' | 'doneAt' | 'rejectReason' | 'contactedAt' | 'remark' | 'rejectedAt' | 'resubmittedAt'>>,
+  ): Promise<PipelineStageRecord>;
+  /** 全平台流水线（看板要一次看到所有租户卡在哪，不能按租户逐个查） */
+  listAllPipeline(): Promise<PipelineStageRecord[]>;
+
+  /** 租户状态流转：停用 / 恢复（数据保留，不删） */
+  setTenantStatus(tenantCode: string, status: TenantStatus): Promise<TenantRecord>;
+
+  /* ------------------------------------------------- 版本与推送（S6） */
+
+  createAppVersion(input: { version: string; note?: string | null }): Promise<AppVersionRecord>;
+  listAppVersions(): Promise<AppVersionRecord[]>;
+  findAppVersion(id: number): Promise<AppVersionRecord | null>;
+  updateAppVersion(id: number, patch: Partial<AppVersionRecord>): Promise<AppVersionRecord>;
+
+  createPushBatch(input: Omit<PushBatchRecord, 'id' | 'createdAt' | 'finishedAt'> & { finishedAt?: string | null }): Promise<PushBatchRecord>;
+  updatePushBatch(id: number, patch: Partial<PushBatchRecord>): Promise<PushBatchRecord>;
+  listPushBatches(limit?: number): Promise<PushBatchRecord[]>;
+  addPushTargets(inputs: Array<Omit<PushTargetRecord, 'id'>>): Promise<PushTargetRecord[]>;
+  listPushTargets(opts?: { batchId?: number; tenantCode?: string }): Promise<PushTargetRecord[]>;
+  updatePushTarget(id: number, patch: Partial<PushTargetRecord>): Promise<PushTargetRecord>;
+  /** 某租户当前生效的版本（按最近一次成功推送算） */
+  currentAppOf(tenantCode: string): Promise<PushTargetRecord | null>;
+
+  /* ------------------------------------------------- 密钥（S6） */
+
+  upsertSecret(input: {
+    tenantCode: string;
+    kind: SecretKind;
+    cipher: string;
+    masked: string;
+    remark?: string | null;
+  }): Promise<TenantSecretRecord>;
+  listSecrets(tenantCode?: string): Promise<TenantSecretRecord[]>;
+  markSecretInvalid(tenantCode: string, kind: SecretKind, reason: string): Promise<TenantSecretRecord | null>;
+
+  /* ------------------------------------------------- 告警（S6） */
+
+  /** 幂等：dedupeKey 已存在则直接返回既有那条（巡检每次跑都不会刷屏） */
+  raiseAlert(input: Omit<AlertRecord, 'id' | 'createdAt' | 'ackAt' | 'ackBy'>): Promise<{ alert: AlertRecord; created: boolean }>;
+  listAlerts(opts?: { open?: boolean; tenantCode?: string; limit?: number }): Promise<AlertRecord[]>;
+  ackAlert(id: number, by: string): Promise<AlertRecord>;
+
+  /* ------------------------------------------------- 工单（S6） */
+
+  createTicket(input: { tenantCode?: string | null; title: string; category: TicketCategory; createdBy: string }): Promise<TicketRecord>;
+  listTickets(opts?: { status?: TicketStatus; tenantCode?: string }): Promise<TicketRecord[]>;
+  findTicket(id: number): Promise<TicketRecord | null>;
+  appendTicketLog(id: number, log: { by: string; text: string }, patch?: Partial<Pick<TicketRecord, 'status' | 'assignee'>>): Promise<TicketRecord>;
+
+  /* ------------------------------------------------- 审计（S6） */
+
+  /** 平台审计流水（谁在什么时候动了哪个租户）—— 过渡期无 RBAC 时这是唯一的追责依据 */
+  listAudits(opts?: { tenantCode?: string; limit?: number }): Promise<AuditRecord[]>;
+
+  /* ------------------------------------------------- 边界兜底（S7） */
+
+  /**
+   * 记录一条孤儿支付（收到钱但没有订单）。
+   *
+   * 幂等键是 `tenantCode + txnId`：微信回调会重放，同一笔钱记三遍就变成
+   * "三笔要查的账"，人工核查时会先被自己的记录误导。
+   */
+  appendOrphanPay(input: {
+    tenantCode: string;
+    orderNo: string;
+    txnId: string;
+    amountCents: number;
+    paidAt?: string | null;
+  }): Promise<{ record: OrphanPayRecord; created: boolean }>;
+  listOrphanPays(opts?: { tenantCode?: string; status?: OrphanPayRecord['status']; limit?: number }): Promise<OrphanPayRecord[]>;
+  resolveOrphanPay(id: number, by: string, note: string): Promise<OrphanPayRecord>;
+
+  /** 任务运行记录（五类定时任务共用一张表 —— 「跑失败了」必须看得见） */
+  appendJobRun(input: Omit<JobRunRecord, 'id'>): Promise<JobRunRecord>;
+  listJobRuns(opts?: { kind?: JobKind; limit?: number }): Promise<JobRunRecord[]>;
+
+  /* ------------------------------------------------- 学校与楼栋模板（S6） */
+
+  deleteSchool(id: number): Promise<boolean>;
 
   reset(): Promise<void>;
 }
@@ -337,6 +485,21 @@ export interface TenantRepo {
   }): Promise<{ ok: boolean; order: OrderRecord | null }>;
 
   listOrdersByUser(userId: number, opts?: { limit?: number; statuses?: OrderStatus[] }): Promise<OrderRecord[]>;
+  /**
+   * 商户后台订单管理（W-07）—— 跨用户、按状态筛选、可按单号/房间号检索、真分页。
+   *
+   * 为什么要单独开一个而不是复用 `listOrdersByStatus`：
+   *   那个方法只能"取某几个状态的全部"，没有 offset 也没有关键字。
+   *   配送清单（手机端）要的正是"全取回来按楼栋分组"；而网页后台面对的是
+   *   一整个学期的订单，全量取回再在浏览器里翻页，数据量一大就是卡死。
+   *   两种取法都是对的，错在共用。
+   */
+  listOrders(opts: {
+    statuses?: OrderStatus[];
+    keyword?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: OrderRecord[]; total: number }>;
   /** 商户配送清单：按状态取全部订单（**跨用户**，商户要看的是整栋楼） */
   listOrdersByStatus(statuses: OrderStatus[], opts?: { limit?: number }): Promise<OrderRecord[]>;
   /** 超时关单扫描：pending_pay 且创建早于 before */

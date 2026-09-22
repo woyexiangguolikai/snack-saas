@@ -6,10 +6,15 @@ import SnAnchor from '../../components/SnAnchor.vue';
 import SnAmount from '../../components/SnAmount.vue';
 import SnBadge from '../../components/SnBadge.vue';
 import SnBuildingSheet from '../../components/SnBuildingSheet.vue';
+import SnBuildingBar from '../../components/SnBuildingBar.vue';
 import SnProductSheet from '../../components/SnProductSheet.vue';
 import SnCartSheet from '../../components/SnCartSheet.vue';
+import SnUndoBar from '../../components/SnUndoBar.vue';
 import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnPageSkeleton from '../../components/SnPageSkeleton.vue';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
+import SnPartialFailure from '../../components/SnPartialFailure.vue';
 import { useSessionStore } from '../../stores/session';
 import { useThemeStore } from '../../stores/theme';
 import { useShop } from '../../composables/useShop';
@@ -17,7 +22,9 @@ import { useAsync } from '../../composables/useAsync';
 import { useBoot } from '../../composables/useBoot';
 import { useNavMetrics } from '../../composables/useNavMetrics';
 import { api, type Category, type StorefrontItem } from '../../utils/api';
+import { callShop } from '../../utils/contact';
 import { formatAmount } from '../../utils/amount';
+import { pullRefresh } from '../../utils/ui';
 
 /**
  * S-04 点单首页。
@@ -56,6 +63,20 @@ const boot = useBoot();
 
 /** 启动期：楼栋牌与时间条都要占位，否则数据到达时下方整体位移（AC-06） */
 const booting = computed(() => boot.phase.value !== 'content');
+
+/* --------------------------------------------------- R-2 未选楼栋的兜底 */
+
+/** 有可选的楼栋吗 —— 没有时"请先选择"就是错误的指引（根本没得选） */
+const hasBuildings = computed(() => session.buildings.length > 0);
+
+/**
+ * 还没选中任何楼栋（R-2）。
+ *
+ * 这个状态必须被**显式处理**：如果只让商品区安静地空着，
+ * 学生的第一反应是"这家店是空的"或"这个 App 坏了"，然后直接退出去。
+ * 正确做法是三件事一起做：说清要先选一栋 + 商品区给可点的空态 + 自动弹抽屉。
+ */
+const noBuilding = computed(() => session.resolved && !shop.buildingId.value);
 
 /**
  * 店铺信息没解析出来 —— 注意与"未开通"区分：
@@ -106,20 +127,35 @@ onLoad(async () => {
   shop.cart.syncLimits(goods.data.value?.items ?? []);
   await nextTick();
   measure();
+  void autoOpenBuildingIfNeeded();
 });
+
+/**
+ * R-2：没选楼栋就**自动把抽屉弹出来**。
+ *
+ * 设计原文是"不让用户自己找入口"。这不是体贴，而是必要性：
+ * 没选楼栋时商品区是空的，学生的注意力在"这里什么都没有"上，
+ * 他不会想到去点顶部那块牌子 —— 他会退出去。
+ */
+async function autoOpenBuildingIfNeeded(): Promise<void> {
+  if (!noBuilding.value || !shop.multiBuilding.value) return;
+  await nextTick();
+  showBuilding.value = true;
+}
 
 onShow(() => {
   // 从结算页/分类页回来时楼栋可能已经变了 —— 这里补一次绑定检查
   if (session.resolved) shop.bindCart();
 });
 
-onPullDownRefresh(async () => {
-  await Promise.all([shop.loadGate(), cats.reload(), goods.reload()]);
-  shop.cart.syncLimits(goods.data.value?.items ?? []);
-  await nextTick();
-  measure();
-  uni.stopPullDownRefresh();
-});
+onPullDownRefresh(() =>
+  pullRefresh(async () => {
+    await Promise.all([shop.loadGate(), cats.reload(), goods.reload()]);
+    shop.cart.syncLimits(goods.data.value?.items ?? []);
+    await nextTick();
+    measure();
+  }),
+);
 
 /**
  * 解析失败后的重试。与 onLoad 走同一套流程 ——
@@ -138,15 +174,27 @@ async function retryResolve(): Promise<void> {
   measure();
 }
 
-async function switchBuilding(id: number): Promise<void> {
-  activeProduct.value = null;
-  await shop.pickBuilding(id);
+/**
+ * 按当前楼栋重拉商品列表。
+ *
+ * 抽出来是因为它有两个调用者：用户切楼栋之后、以及**撤销切楼栋**之后（R-5）。
+ * 撤销时如果只把购物车还回去、不重拉列表，屏幕上还是新楼栋的商品，
+ * 而车里装的是旧楼栋的货 —— 学生一点结算就被拒，且完全看不懂为什么。
+ */
+async function reloadGoods(): Promise<void> {
   // 先丢弃旧楼栋的列表再拉新的：留着旧数据会让"切换后的那一秒"显示别楼商品
   goods.reset();
   await goods.load();
   shop.cart.syncLimits(goods.data.value?.items ?? []);
   await nextTick();
   measure();
+  void autoOpenBuildingIfNeeded();
+}
+
+async function switchBuilding(id: number): Promise<void> {
+  activeProduct.value = null;
+  await shop.pickBuilding(id, reloadGoods);
+  await reloadGoods();
 }
 
 /* ------------------------------------------------------ 分类分组与锚点 */
@@ -166,11 +214,23 @@ const groups = computed(() => {
     if (list?.length) ordered.push({ id: c.id, name: c.name, items: list });
     byId.delete(c.id);
   }
-  // 没有归类的商品兜底成一组 —— 不能让商品"存在但看不见"，那等于丢单
+  // 没有归类的商品兜底成一组 —— 不能让商品"存在但看不见"，那等于丢单。
+  // 这一条同时是"分类接口挂掉"时的兜底：商品全部落在「其他」，
+  // 学生照常能点、能加购、能下单（局部失败 §5.1 ②）。
   const rest = [...byId.values()].flat();
   if (rest.length) ordered.push({ id: 0, name: '其他', items: rest });
   return ordered;
 });
+
+/**
+ * 只重试分类。**不重拉商品** —— 商品是好的，重拉会让整个列表闪一下骨架，
+ * 而用户刚看到的位置会被打断。这也是局部失败的要义：只修坏掉的那一块。
+ */
+async function retryCats(): Promise<void> {
+  await cats.reload();
+  await nextTick();
+  measure();
+}
 
 const anchorItems = computed(() => groups.value.map((g) => ({ key: sectionId(g.id), label: g.name })));
 const activeAnchor = ref('');
@@ -263,6 +323,12 @@ function checkout(): void {
 }
 
 function openBuilding(): void {
+  // 没有可选的楼栋时，点楼栋牌唯一有意义的动作是找店家。
+  // 点了没有任何反应是最让人恼火的一种交互 —— 它不是"无操作"，是"坏了"。
+  if (!hasBuildings.value) {
+    callShop();
+    return;
+  }
   if (shop.multiBuilding.value) showBuilding.value = true;
 }
 
@@ -307,17 +373,20 @@ const buildingId = computed(() => shop.buildingId.value);
         </view>
       </view>
 
-      <view class="home__building" @click="openBuilding">
+      <view class="home__building">
         <!-- 解析期占位。
              这里**不能**先显示「选择宿舍楼」：数据到达时会跳版，
              而且会让人以为必须先手动选一次才看得到商品。 -->
-        <view v-if="booting" class="home__bchip">
-          <SnSkeleton variant="title" width="96px" />
-        </view>
-        <view v-else class="home__bchip">
-          <text class="home__bname">{{ buildingName || '选择宿舍楼' }}</text>
-          <text v-if="multiBuilding" class="home__bchev">⌄</text>
-        </view>
+        <!-- AC-01：楼栋牌只允许有一个实现（SnBuildingBar），这里不再自己画 ——
+             自己画迟早会长成另一个高度（历史上长成过 32px 和 46px 两版）。
+             解析期的骨架占位也由组件自己出（loading），占位容器同理不自己画。 -->
+        <SnBuildingBar
+          :loading="booting"
+          :name="buildingName"
+          :placeholder="hasBuildings ? '请先选择宿舍楼' : '暂无配送楼栋'"
+          :chevron="multiBuilding"
+          @pick="openBuilding"
+        />
         <!-- 起送行同样要占位，否则时间条会先上移再下移 -->
         <view v-if="booting" class="home__bmeta">
           <view class="home__bmetaskel" />
@@ -330,6 +399,20 @@ const buildingId = computed(() => shop.buildingId.value);
           <text v-if="multiBuilding"> · 点此切换</text>
         </text>
       </view>
+    </view>
+
+    <!-- 网络横幅：首页没有自定义导航栏，所以它紧跟"店名 + 搜索"那一行（视觉上就是导航栏） -->
+    <SnNetBanner />
+
+    <!--
+      R-1 离线进店黄条。
+      有本地缓存时我们让用户**进得来**（而不是甩一张"没连上店铺"的整页错误），
+      但必须把实情说出来：现在显示的是上次的数据，且加购能成功、下单一定失败。
+      不说清楚的后果是他在支付那一步彻底懵："刚才不是都好好的吗？"
+    -->
+    <view v-if="session.offline" class="home__offline">
+      <text class="home__offlinetext">网络连不上，正在显示上次的内容。下单和支付需要联网。</text>
+      <text class="home__offlinetry" @click="retryResolve()">重试</text>
     </view>
 
     <!-- ② 时间状态条（不参与滚动） -->
@@ -358,6 +441,18 @@ const buildingId = computed(() => shop.buildingId.value);
       :scroll-with-animation="true"
       @scroll="onScroll"
     >
+      <!-- 局部失败（§5.1 ②）：分类挂了，商品还在。
+           此时商品会兜底归到「其他」一组（见 groups 计算），所以页面**完全可用** ——
+           绝不能因为一个次要请求就整页判失败。要写清"已显示的可以直接下单"，
+           否则学生会以为整页都不可信而离开。 -->
+      <SnPartialFailure
+        v-if="cats.error.value && groups.length"
+        title="分类没加载出来"
+        safe="已显示的商品可以直接下单，只是分类锚点暂时用不了。"
+        retry-label="只重试分类"
+        @retry="retryCats"
+      />
+
       <!-- 店铺公告 -->
       <view v-if="session.announcement" class="home__notice">
         <text class="home__noticetag">公告</text>
@@ -375,19 +470,14 @@ const buildingId = computed(() => shop.buildingId.value);
         tone="danger"
         glyph="!"
         title="没连上店铺"
-        :desc="session.lastError?.message ?? '网络不太顺，请稍后重试'"
+        :desc="session.lastError?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次'"
         primary-text="重新加载"
         @primary="retryResolve"
       />
 
-      <!-- 骨架（S-02：解析期直接进首页骨架，不给转圈页） -->
-      <view v-else-if="goods.phase.value === 'loading'" class="home__skel">
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="thumb" />
-        <SnSkeleton variant="text" />
-        <SnSkeleton variant="thumb" />
-        <SnSkeleton variant="text" />
-      </view>
+      <!-- 骨架（S-02：解析期直接进首页骨架，不给转圈页）。
+           结构必须与真实一致：分类锚点 32 + 商品行 ×3（楼栋牌/时间条已在滚动区外占位）。 -->
+      <SnPageSkeleton v-else-if="goods.phase.value === 'loading'" preset="home" :rows="3" />
 
       <!-- 错误态：说明是"没连上"，并给重试 -->
       <SnStateBlock
@@ -395,20 +485,40 @@ const buildingId = computed(() => shop.buildingId.value);
         tone="danger"
         glyph="!"
         title="商品没加载出来"
-        :desc="goods.error.value?.message ?? '网络不太顺，请稍后重试'"
+        :desc="goods.error.value?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次'"
         primary-text="重新加载"
         @primary="goods.reload()"
       />
 
-      <!-- 空态：这一栋确实没有可买的 -->
+      <!--
+        R-2 还没选楼栋：**必须**说清"要先选一栋"并给出可点的入口。
+        安静地空着会让学生以为这家店是空的（或 App 坏了），然后直接退出去。
+        相应地，真的一个楼栋都没有时不能说"请先选择" —— 他根本没得选。
+      -->
+      <SnStateBlock
+        v-else-if="noBuilding"
+        tone="off"
+        glyph="—"
+        :title="hasBuildings ? '请先选一栋宿舍楼' : '这家店还没有可配送的楼栋'"
+        :desc="hasBuildings
+          ? '选好之后，这里会显示能送到那栋的商品与库存。'
+          : '店家还没添加配送楼栋，暂时无法下单。可以联系店家了解情况。'"
+        :primary-text="hasBuildings ? '选择宿舍楼' : '联系店家'"
+        @primary="hasBuildings ? openBuilding() : callShop()"
+      />
+
+      <!-- 空态（12 类之④）：必须点明**哪个楼栋**，并说明这是系统状态而非用户操作错误。
+           不点明楼栋，学生会以为"这个店是不是坏了"；不说"不是你的问题"，他会反复切换楼栋找原因。 -->
       <SnStateBlock
         v-else-if="goods.isEmpty.value"
         tone="off"
         glyph="—"
-        title="本栋暂时没有可买的商品"
-        desc="店家可能在补货，也可能是这栋还没上架商品。可以切换楼栋看看。"
-        :primary-text="multiBuilding ? '切换楼栋' : ''"
-        @primary="openBuilding"
+        :title="`${buildingName || '这栋楼'}今天没有可卖的`"
+        :desc="`${buildingName || '你选的这栋楼'}的商品还没上架，不是你的操作问题。店家可能在补货，也可能这栋今天不排配送。`"
+        :primary-text="multiBuilding ? '切换楼栋' : '联系店家'"
+        :secondary-text="multiBuilding ? '联系店家' : ''"
+        @primary="multiBuilding ? openBuilding() : callShop()"
+        @secondary="callShop()"
       />
 
       <!-- 内容 -->
@@ -434,12 +544,17 @@ const buildingId = computed(() => shop.buildingId.value);
         </view>
 
         <view v-if="shop.blocked.value" class="home__blocked">
+          <!--
+            商品照常可浏览，只是不能下单 —— 所以给"整页状态"而不是把列表藏起来。
+            §6.4 / AC-02：标题与恢复时间都由服务端拆开给，与结算页、状态页共用同一套话，
+            免得同一件事在三页里长出三种说法。
+          -->
           <SnStateBlock
             tone="off"
             glyph="—"
-            :title="gate?.message ?? '当前不可下单'"
+            :title="gate?.title ?? '当前不可下单'"
             desc="商品可以正常浏览，恢复后可立即下单。"
-            :next-text="gate?.nextOpenAt ? `下次可下单时间 ${gate.nextOpenAt}` : ''"
+            :next-text="gate?.recovery ?? ''"
           />
         </view>
         <view class="home__tailpad" />
@@ -476,12 +591,15 @@ const buildingId = computed(() => shop.buildingId.value);
       :item="activeProduct"
       :qty="activeProduct ? shop.qtyOf(activeProduct.productId) : 0"
       :orderable="orderable"
-      :gate-message="gate?.message ?? ''"
+      :gate-message="gate?.title ?? ''"
       :building-name="buildingName"
       @add="activeProduct && addItem(activeProduct)"
       @set-qty="(v: number) => activeProduct && setQty(activeProduct.productId, v)"
     />
     <SnCartSheet v-model="showCart" :building-name="buildingName" @checkout="checkout" />
+
+    <!-- R-5 换楼栋的 5 秒撤销条（全局单例，只有这一处需要挂） -->
+    <SnUndoBar />
   </view>
 </template>
 
@@ -534,24 +652,7 @@ const buildingId = computed(() => shop.buildingId.value);
 .home__building {
   padding: var(--sp-2) 0 var(--sp-3);
 }
-.home__bchip {
-  height: var(--building-chip-h);
-  border-radius: var(--building-chip-r);
-  background: var(--building-chip-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-}
-.home__bname {
-  font-size: var(--fs-card);
-  font-weight: var(--fw-semibold);
-  color: var(--building-chip-fg);
-}
-.home__bchev {
-  font-size: var(--fs-card);
-  color: var(--building-chip-fg);
-}
+/* 楼栋牌本身不再在此定义 —— 见 SnBuildingBar（AC-01 单一实现） */
 .home__bmeta {
   display: block;
   margin-top: var(--sp-2);
@@ -676,6 +777,30 @@ const buildingId = computed(() => shop.buildingId.value);
   background: var(--surface);
   box-shadow: var(--sup);
   z-index: var(--z-absorb);
+}
+/* R-1 离线进店黄条：用琥珀而不是红 —— 它还没到"出错了"，只是"这次没连上" */
+.home__offline {
+  flex: none;
+  margin: 0 var(--page-x) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--warn-bg);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.home__offlinetext {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-tag);
+  line-height: var(--lh-tag);
+  color: var(--warn);
+}
+.home__offlinetry {
+  flex: none;
+  font-size: var(--fs-tag);
+  font-weight: var(--fw-semibold);
+  color: var(--brand-700);
 }
 .home__cartinner {
   display: flex;

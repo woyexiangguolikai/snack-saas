@@ -6,7 +6,7 @@ import SnInput from '../../components/SnInput.vue';
 import SnChip from '../../components/SnChip.vue';
 import SnProductItem from '../../components/SnProductItem.vue';
 import SnStateBlock from '../../components/SnStateBlock.vue';
-import SnSkeleton from '../../components/SnSkeleton.vue';
+import SnPageSkeleton from '../../components/SnPageSkeleton.vue';
 import SnProductSheet from '../../components/SnProductSheet.vue';
 import { useThemeStore } from '../../stores/theme';
 import { useShop } from '../../composables/useShop';
@@ -87,6 +87,8 @@ const results = computed(() => {
 });
 
 const orderable = computed(() => shop.orderable.value);
+/** 本栋在售商品总数 —— 搜索无结果时要拿它来回答"是我搜错了还是店里真没有" */
+const allCount = computed(() => goods.data.value?.items.length ?? 0);
 const buildingName = computed(() => shop.buildingName.value);
 const gate = shop.gate;
 
@@ -173,18 +175,20 @@ function onBack(): void {
 
       <!-- 已输入 -->
       <template v-else>
-        <view v-if="goods.phase.value === 'loading'" class="se__skel">
-          <SnSkeleton variant="text" />
-          <SnSkeleton variant="thumb" />
-        </view>
+        <!-- 骨架：商品行结构（缩略图 + 两行文字 + 价格），与真实列表同构 -->
+        <SnPageSkeleton v-if="goods.phase.value === 'loading'" preset="home" :rows="2" />
 
+        <!-- 空态（12 类之⑤）：必须包含三件事 —— 回显用户搜的词、给出可点的相近出路、
+             以及**本栋在售总数**。第三项决定了用户能不能判断"是我搜错了还是店里真没有"。 -->
         <SnStateBlock
           v-else-if="!results.length"
           tone="off"
           glyph="—"
           title="没有找到相关商品"
-          :desc="`本栋在售商品里没有匹配「${keyword.trim()}」的。换个词试试，或确认一下当前楼栋对不对。`"
+          :desc="`本栋在售的 ${allCount} 种商品里，没有匹配「${keyword.trim()}」的。换个词试试，或看看本栋全部商品。`"
+          primary-text="看本栋全部商品"
           secondary-text="清空关键词"
+          @primary="keyword = ''"
           @secondary="keyword = ''"
         />
 
@@ -216,7 +220,7 @@ function onBack(): void {
       :item="activeProduct"
       :qty="activeProduct ? shop.qtyOf(activeProduct.productId) : 0"
       :orderable="orderable"
-      :gate-message="gate?.message ?? ''"
+      :gate-message="gate?.title ?? ''"
       :building-name="buildingName"
       @add="activeProduct && shop.addToCart(activeProduct)"
       @set-qty="(v: number) => activeProduct && shop.setQty(activeProduct.productId, v)"

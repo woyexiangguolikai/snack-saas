@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { REPO_FACTORY } from '../core/repo.factory';
+import type { PlatformRepo, RepoFactory } from '../core/repository';
 import { LedgerService } from './ledger.service';
-import { JobsService } from './jobs.service';
 import { TenantService } from '../platform/tenant.service';
 
 /**
@@ -11,14 +12,21 @@ import { TenantService } from '../platform/tenant.service';
  *   ① 给商户充值 / 调整余额（钱进来）
  *   ② 手动跑一次结算（钱扣出去，正常由定时任务做）
  *   ③ 看对账结果（钱对不对得上）
+ *
+ * 定时任务的入口（`/ledger/jobs/*`）在 S7 搬到 `jobs.controller.ts`，
+ * **URL 一字未改** —— 实现换模块不该让运维手册和监控探针跟着改。
  */
 @Controller('api/platform/ledger')
 export class PlatformLedgerController {
   constructor(
     private readonly ledger: LedgerService,
-    private readonly jobs: JobsService,
     private readonly tenants: TenantService,
+    @Inject(REPO_FACTORY) private readonly repos: RepoFactory,
   ) {}
+
+  private get platform(): PlatformRepo {
+    return this.repos.platform();
+  }
 
   /** 两个账本状态同屏：订阅剩余天数 + 余额（验收 V2-8） */
   @Get('overview')
@@ -32,6 +40,42 @@ export class PlatformLedgerController {
         subscriptionExpiring: items.filter((i) => i.gates.subscriptionDaysLeft !== null && i.gates.subscriptionDaysLeft <= 7).length,
       },
     };
+  }
+
+  /* ---------------------------------------------------------------- 对账看板（S7） */
+
+  /**
+   * 平台对账看板：一屏看完所有租户"钱对不对得上"。
+   *
+   * ⚠️ **必须声明在 `@Get(':tenantCode')` 之前** —— 否则 `reconcile-board`
+   * 会被当成租户编码吃掉，然后报 `TENANT_NOT_FOUND: 租户不存在：reconcile-board`。
+   * 这种错很像业务错，实际是路由顺序错，排障时会先怀疑租户表。
+   */
+  @Get('reconcile-board')
+  async reconcileBoard(@Query('now') now?: string) {
+    return this.ledger.platformReconcileBoard(now ? new Date(now) : new Date());
+  }
+
+  /** 账期账单批量生成（定时任务 `statement_build` 的手工口） */
+  @Post('statements/build')
+  @HttpCode(200)
+  async buildStatements(@Body() body: { period?: string; now?: string }) {
+    const period = body?.period ?? LedgerService.prevPeriod(body?.now ? new Date(body.now) : new Date());
+    return this.ledger.buildAllStatements(period);
+  }
+
+  /** 孤儿支付清单（收到钱但没有订单）—— 逐笔人工核查的唯一入口 */
+  @Get('orphan-pays')
+  async orphanPays(@Query('tenantCode') tenantCode?: string, @Query('status') status?: 'open' | 'resolved') {
+    const items = await this.platform.listOrphanPays({ tenantCode, status, limit: 500 });
+    return { items, open: items.filter((i) => i.status === 'open').length };
+  }
+
+  /** 结清一条孤儿支付（**必须写处理说明**，否则等于把异常抹掉） */
+  @Post('orphan-pays/:id/resolve')
+  @HttpCode(200)
+  async resolveOrphanPay(@Param('id') id: string, @Body() body: { operator?: string; note?: string }) {
+    return this.platform.resolveOrphanPay(Number(id), body?.operator ?? 'platform', body?.note ?? '');
   }
 
   /** 充值（手动入账；将来接微信支付商户平台回调时走同一入口） */
@@ -156,22 +200,5 @@ export class PlatformLedgerController {
   async statements(@Param('tenantCode') tenantCode: string, @Query('period') period?: string) {
     if (period) return { statement: await this.ledger.buildStatement(tenantCode, period) };
     return { items: await this.ledger.listStatements(tenantCode) };
-  }
-
-  /** 手动触发每日任务（跨日扣减 + 到期巡检）；`now` 可注入 → 验收不用等一天 */
-  @Post('jobs/run')
-  @HttpCode(200)
-  async runJobs(@Body() body: { kind?: 'settlement' | 'patrol' | 'all'; now?: string }) {
-    const now = body?.now ? new Date(body.now) : new Date();
-    const kind = body?.kind ?? 'all';
-    const result: Record<string, unknown> = { now: now.toISOString() };
-    if (kind === 'settlement' || kind === 'all') result.settlement = await this.jobs.runDailySettlement(now);
-    if (kind === 'patrol' || kind === 'all') result.patrol = await this.jobs.runPatrol(now);
-    return result;
-  }
-
-  @Get('jobs/status')
-  async jobStatus() {
-    return this.jobs.recentRuns();
   }
 }

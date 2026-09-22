@@ -7,7 +7,8 @@ import SnStateBlock from '../../components/SnStateBlock.vue';
 import SnDivider from '../../components/SnDivider.vue';
 import { useSessionStore } from '../../stores/session';
 import { api, type Notice } from '../../utils/api';
-import { switchTab, TAB } from '../../utils/ui';
+import { switchTab, TAB, pullRefresh } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-13 消息中心（订阅消息的**兜底通道**）。
@@ -51,10 +52,11 @@ onLoad(() => {
   void load();
 });
 
-onPullDownRefresh(async () => {
-  await load();
-  uni.stopPullDownRefresh();
-});
+onPullDownRefresh(() =>
+  pullRefresh(async () => {
+    await load();
+  }),
+);
 
 /** 轻重 PTS-语义色：交付=ok，退款相关=warn，关闭=off。与订单状态卡保持同一套语言（AC-11） */
 function toneOf(t: Notice['type']): 'ok' | 'warn' | 'off' {
@@ -82,6 +84,8 @@ function back(): void {
 <template>
   <view class="nt">
     <SnNavBar title="消息" @back="back" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="nt__scroll">
       <view v-if="loading" class="nt__skel">

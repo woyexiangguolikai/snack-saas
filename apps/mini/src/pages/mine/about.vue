@@ -7,6 +7,7 @@ import { useThemeStore } from '../../stores/theme';
 import { currentAppId } from '../../utils/appid';
 import { formatAmount } from '../../utils/amount';
 import { switchTab, TAB } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * 关于本店 + 隐私说明。
@@ -41,6 +42,8 @@ function onBack(): void {
 <template>
   <view class="ab" :style="theme.themeStyle">
     <SnNavBar title="关于本店与隐私" @back="onBack" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <scroll-view scroll-y class="ab__scroll">
       <view class="ab__block">

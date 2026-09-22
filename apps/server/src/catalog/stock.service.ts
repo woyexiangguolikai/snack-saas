@@ -202,9 +202,10 @@ export class StockService {
     });
     if (!r.ok) {
       if (r.reason === 'not_on_shelf') {
-        throw new BizError(ERR.VALIDATION_FAILED, '该商品在当前楼栋未上架');
+        throw new BizError(ERR.VALIDATION_FAILED, '该商品在当前楼栋未上架，请换一件或换栋');
       }
-      throw new BizError(ERR.VALIDATION_FAILED, `库存不足（剩余 ${r.cell?.stock ?? 0} 件）`);
+      // §5.4-3：不说"库存不足"（只说不行），要说"还剩几件"（学生才知道改到多少）
+      throw new BizError(ERR.VALIDATION_FAILED, `本栋只剩 ${r.cell?.stock ?? 0} 件了，请调整数量`);
     }
     return r.cell!;
   }

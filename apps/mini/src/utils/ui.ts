@@ -101,3 +101,39 @@ export function goBackOrHome(): void {
   if (pages.length > 1) uni.navigateBack();
   else switchTab(TAB.home);
 }
+
+/* ---------------------------------------------------------------- 下拉刷新 */
+
+/**
+ * 下拉刷新的**最短停留时长**（设计文档 §2.3）。
+ *
+ * 为什么必须有这个数字：
+ *   本地联调时接口 30ms 就回来了，指示器一闪而过 —— 用户体验上等于"我拉了一下，
+ *   什么都没发生"。他会再拉一次，然后再拉一次。让指示器至少留 600ms，
+ *   作用不是装饰，而是让"我已经刷新过了"这件事**被看见**。
+ *
+ * 600 这个值的取舍：短于 400ms 容易被忽略；长于 800ms 在真机上会明显觉得卡。
+ */
+export const PULL_REFRESH_MIN_MS = 600;
+
+/**
+ * 包一次下拉刷新：保证指示器至少停留 600ms，然后关闭。
+ *
+ * 用法（所有页面统一走这里，不要各写一遍）：
+ *   onPullDownRefresh(() => pullRefresh(() => list.reload()))
+ *
+ * 注意**不要在数据失败时提前 stopPullDownRefresh**：先关指示器再弹错误 toast，
+ * 用户会以为"刷新成功但内容没变"。统一在最后关，错误交给页面的错误态表达。
+ */
+export async function pullRefresh(work: () => Promise<unknown>): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    await work();
+  } finally {
+    const waited = Date.now() - startedAt;
+    if (waited < PULL_REFRESH_MIN_MS) {
+      await new Promise((r) => setTimeout(r, PULL_REFRESH_MIN_MS - waited));
+    }
+    uni.stopPullDownRefresh();
+  }
+}

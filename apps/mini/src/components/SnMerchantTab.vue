@@ -54,7 +54,7 @@ function go(key: (typeof TABS)[number]['key']): void {
   display: flex;
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--surface);
-  border-top: 1rpx solid var(--line);
+  border-top: 1rpx solid var(--line-200);
 }
 .smt__item {
   flex: 1;

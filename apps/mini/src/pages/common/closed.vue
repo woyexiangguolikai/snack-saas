@@ -6,6 +6,7 @@ import { useSessionStore } from '../../stores/session';
 import { useThemeStore } from '../../stores/theme';
 import { currentAppId } from '../../utils/appid';
 import { switchTab, TAB } from '../../utils/ui';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-03 店铺未开通。
@@ -48,7 +49,7 @@ const desc = computed(() => {
     return '这个小程序还没有绑定任何店铺。请确认你扫的是店家给你的码；如果你就是店家，请联系我们开通。';
   }
   if (session.suspended) return '本店当前暂停接单。已下单的订单不受影响，可在「我的订单」里查看进度。';
-  return session.lastError?.message ?? '网络不太顺，请稍后重试。';
+  return session.lastError?.message ?? '网络不太顺，这次没取到数据。点「重新加载」再试一次。';
 });
 
 /** 重新加载：走一次完整 resolve，成功就回首页。失败则留在本页（本页不会白屏） */
@@ -84,6 +85,8 @@ function contact(): void {
 
 <template>
   <view class="closed" :style="theme.themeStyle">
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
     <SnStateBlock
       tone="off"
       glyph="—"

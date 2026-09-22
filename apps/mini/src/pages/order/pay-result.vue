@@ -6,10 +6,12 @@ import SnAmount from '../../components/SnAmount.vue';
 import SnButton from '../../components/SnButton.vue';
 import SnDivider from '../../components/SnDivider.vue';
 import { useThemeStore } from '../../stores/theme';
+import { useSessionStore } from '../../stores/session';
 import { api, type StudentOrder } from '../../utils/api';
 import { useCountdown } from '../../composables/useCountdown';
 import { switchTab, TAB } from '../../utils/ui';
 import { pushAvailable, requestPushGrant } from '../../utils/push';
+import SnNetBanner from '../../components/SnNetBanner.vue';
 
 /**
  * S-12 支付中转 / 结果页 —— **四种状态一个都不能少**。
@@ -25,12 +27,21 @@ import { pushAvailable, requestPushGrant } from '../../utils/push';
  * requestPayment 成功只说明"微信受理了"，不等于"我们的订单已入账"。
  */
 const theme = useThemeStore();
+const session = useSessionStore();
 
 type Phase = 'transit' | 'success' | 'fail' | 'pending';
 
 const phase = ref<Phase>('transit');
 const orderNo = ref('');
-const order = ref<StudentOrder | null>(null);
+/**
+ * 订单详情（含房间号）。
+ *
+ * 成功态必须把「送到哪」写出来（订单号 + 送到哪 + 下一步，三件缺一不可）：
+ *   学生在这一屏唯一想确认的事就是"我付的这一单，是不是送到我这儿"。
+ *   只给金额不给地址，他就得跳去订单详情再确认一次 —— 而很多人不会跳，
+ *   他们会带着"不确定"离开，然后在半小时后打电话问店家。
+ */
+const order = ref<(StudentOrder & { room: string }) | null>(null);
 const failReason = ref('');
 const hint = ref('');
 const payParams = ref<Record<string, string> | null>(null);
@@ -216,6 +227,8 @@ const showTimer = computed(() => phase.value === 'pending' && paySeconds.value !
 <template>
   <view class="pr" :style="theme.themeStyle">
     <SnNavBar :title="phase === 'success' ? '支付结果' : '支付'" @back="gotoOrders" />
+    <!-- 网络横幅（§5.2：任何情况下可见）—— 导航栏正下方，不遮挡操作 -->
+    <SnNetBanner />
 
     <view class="pr__body">
       <!-- 中转：转圈 + 订单号 + 应付 + 查看订单 -->
@@ -249,6 +262,16 @@ const showTimer = computed(() => phase.value === 'pending' && paySeconds.value !
             <text class="pr__v num">{{ orderNo }}</text>
           </view>
           <SnDivider dashed space="sm" />
+          <!-- 「送到哪」与「商户」：学生可核对的两件事（设计稿要求的三要素之二） -->
+          <view class="pr__kv">
+            <text class="pr__k">商户</text>
+            <text class="pr__v">{{ session.shopName || '本店' }}</text>
+          </view>
+          <view class="pr__kv">
+            <text class="pr__k">送到</text>
+            <text class="pr__v">{{ order?.buildingName }}{{ order?.room ? ' · ' + order.room : '' }}</text>
+          </view>
+          <SnDivider dashed space="sm" />
           <view v-for="(it, i) in order?.items ?? []" :key="i" class="pr__line">
             <text class="pr__linename">{{ it.name }}</text>
             <text class="pr__lineqty num">×{{ it.qty }}</text>
@@ -259,6 +282,10 @@ const showTimer = computed(() => phase.value === 'pending' && paySeconds.value !
             <SnAmount :fen="order?.totalCents ?? 0" size="lg" />
           </view>
         </view>
+
+        <!-- 预期管理：微信订阅消息**只能发一条**，学生不会看到每一步状态。
+             不写这句，学生会以为"每一步都会收到通知"，然后在没收到时来问。 -->
+        <text class="pr__desc">送达后你会收到一条通知</text>
 
         <view class="pr__acts">
           <SnButton type="pri" block @click="gotoTicket">查看订单</SnButton>
@@ -289,6 +316,10 @@ const showTimer = computed(() => phase.value === 'pending' && paySeconds.value !
           <text class="pr__timerval num">{{ payText }}</text>
         </view>
 
+        <view class="pr__kv">
+          <text class="pr__k">状态</text>
+          <text class="pr__v">{{ order?.statusText ?? '待付款' }}</text>
+        </view>
         <view class="pr__kv">
           <text class="pr__k">订单号</text>
           <text class="pr__v num">{{ orderNo }}</text>

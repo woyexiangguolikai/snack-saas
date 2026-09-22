@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import SnSheet from './SnSheet.vue';
 import SnAmount from './SnAmount.vue';
 import SnStepper from './SnStepper.vue';
 import SnDivider from './SnDivider.vue';
+import SnBuildingBar from './SnBuildingBar.vue';
+import { toast } from '../utils/ui';
+import { CUSTOMER_COPY } from '../utils/copy';
 import { useCartStore, type CartLine } from '../stores/cart';
 
 /**
@@ -67,9 +70,15 @@ function onRemove(line: CartLine) {
   cart.remove(line.productId);
 }
 
-function onOverflow() {
-  uni.showToast({ title: '本栋库存不足了', icon: 'none' });
+function onOverflow(max: number) {
+  toast(CUSTOMER_COPY.stockLimit(max));
 }
+
+/**
+ * 售罄行底部那句「去结算」的禁用原因（§5.4-3）。
+ * 点明**是哪一栋**：只说"已售罄"，学生会以为是全网缺货，然后去别的楼栋干等。
+ */
+const soldOutNote = computed(() => CUSTOMER_COPY.soldOut(`「${cart.invalidNames.join('、')}」`, props.buildingName));
 
 function goCheckout() {
   if (cart.isEmpty || cart.hasInvalid) return;
@@ -88,9 +97,12 @@ function goCheckout() {
   >
     <!-- 楼栋牌：只展示不可切换 -->
     <view class="ct__building">
-      <view class="ct__bchip">
-        <text class="ct__bchiptext">{{ buildingName || '未选择楼栋' }}</text>
-      </view>
+      <SnBuildingBar
+        :name="buildingName"
+        placeholder="未选择楼栋"
+        :pickable="false"
+        :chevron="false"
+      />
       <text class="ct__bnote">换楼栋会清空购物车，所以要换就趁早</text>
     </view>
 
@@ -109,7 +121,7 @@ function goCheckout() {
         <view class="ct__main">
           <text class="ct__name">{{ l.name }}</text>
           <text v-if="l.spec" class="ct__spec">{{ l.spec }}</text>
-          <text v-if="l.invalid" class="ct__bad">本栋已售完，请移出后结算</text>
+          <text v-if="l.invalid" class="ct__bad">{{ CUSTOMER_COPY.soldOut(`「${l.name}」`, buildingName) }}</text>
         </view>
 
         <view class="ct__right">
@@ -127,6 +139,7 @@ function goCheckout() {
           />
         </view>
       </view>
+
 
       <SnDivider />
       <view class="ct__sum">
@@ -159,9 +172,7 @@ function goCheckout() {
         </view>
       </view>
       <!-- 禁用原因必须写出来：只把按钮变灰，学生会反复点 -->
-      <text v-if="cart.hasInvalid" class="ct__block">
-        「{{ cart.invalidNames.join('、') }}」在本栋已售完，请先移出再结算
-      </text>
+      <text v-if="cart.hasInvalid" class="ct__block">{{ soldOutNote }}</text>
     </template>
   </SnSheet>
 </template>
@@ -170,19 +181,7 @@ function goCheckout() {
 .ct__building {
   padding: 0 var(--page-x) var(--sp-3);
 }
-.ct__bchip {
-  height: var(--building-chip-h);
-  border-radius: var(--building-chip-r);
-  background: var(--building-chip-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ct__bchiptext {
-  font-size: var(--fs-card);
-  font-weight: var(--fw-semibold);
-  color: var(--building-chip-fg);
-}
+/* 楼栋牌不再在此定义 —— 见 SnBuildingBar（AC-01 单一实现） */
 .ct__bnote {
   display: block;
   margin-top: var(--sp-2);

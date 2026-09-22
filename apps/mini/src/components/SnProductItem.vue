@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import SnAmount from './SnAmount.vue';
 import SnStepper from './SnStepper.vue';
+import { toast } from '../utils/ui';
+import { CUSTOMER_COPY } from '../utils/copy';
 import type { StorefrontItem } from '../utils/api';
 
 /**
@@ -45,8 +47,8 @@ function onQty(v: number) {
   emit('setQty', v);
 }
 
-function onOverflow() {
-  uni.showToast({ title: '本栋库存不足了', icon: 'none' });
+function onOverflow(max: number) {
+  toast(CUSTOMER_COPY.stockLimit(max));
 }
 
 function onOpen() {
